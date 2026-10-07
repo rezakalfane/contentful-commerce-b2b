@@ -3,11 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Plp } from "@/components/plp";
 import { getTileLinks, parseCatalogParams, searchCatalog } from "@/lib/bigcommerce";
-import { ensureCatalogRoot } from "@/lib/catalog-route";
+import { ensureCatalogRoot, requestedCatalogRoot } from "@/lib/catalog-route";
 import { alternatesFromPaths, CATALOG_ROOT, categoryLabel, getMessages, isLocale, localePath } from "@/lib/i18n";
 
-export async function generateMetadata({ params }: PageProps<"/[locale]/[root]">): Promise<Metadata> {
-  const { locale, root } = await params;
+export async function generateMetadata({ params }: PageProps<"/[locale]/products">): Promise<Metadata> {
+  const { locale } = await params;
+  const root = await requestedCatalogRoot();
   if (!isLocale(locale) || root !== CATALOG_ROOT[locale]) return {};
   return {
     title: getMessages(locale).allProducts,
@@ -15,8 +16,9 @@ export async function generateMetadata({ params }: PageProps<"/[locale]/[root]">
   };
 }
 
-export default async function ProductsPage({ params, searchParams }: PageProps<"/[locale]/[root]">) {
-  const { locale, root } = await params;
+export default async function ProductsPage({ params, searchParams }: PageProps<"/[locale]/products">) {
+  const { locale } = await params;
+  const root = await requestedCatalogRoot();
   if (!isLocale(locale)) notFound();
   const sp = await searchParams;
   if (!(await ensureCatalogRoot(locale, root, [], sp))) notFound();

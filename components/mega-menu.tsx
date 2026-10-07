@@ -4,7 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import type { Tags } from "@/lib/edit";
 
 export type MegaColumn = {
   label: string;
@@ -24,14 +23,12 @@ export function MegaMenu({
   columns,
   allLabel,
   navLabel,
-  tags,
 }: {
   label: string;
   href: string;
   columns: MegaColumn[];
   allLabel: string;
   navLabel: string;
-  tags?: Tags;
 }) {
   const [open, setOpen] = useState(false);
   // Hover previews the menu; a click pins it open (a second click, Escape or an outside click closes it).
@@ -80,7 +77,6 @@ export function MegaMenu({
         aria-expanded={open}
         aria-controls="mega-menu-panel"
         onClick={() => (open && pinned ? close() : (setOpen(true), setPinned(true)))}
-        {...(tags ?? {})}
         className={`flex items-center gap-1.5 text-[0.95rem] font-medium transition-colors hover:text-ink ${open ? "text-ink" : "text-slate"}`}
       >
         <span className={open ? "underline decoration-amber decoration-2 underline-offset-[6px]" : ""}>{label}</span>

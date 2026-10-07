@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { permanentRedirect } from "next/navigation";
 import { getCatalogAlternates } from "./bigcommerce";
 import { CATALOG_ROOT, localeOfCatalogRoot, localePath, type Locale } from "./i18n";
@@ -25,4 +26,12 @@ export async function ensureCatalogRoot(locale: Locale, root: string, slug: stri
   const target = alternates?.[locale];
   if (target) permanentRedirect(target.replace(/\/+$/, "") + queryString(sp));
   return false;
+}
+
+/**
+ * This project keeps one static route, `/[locale]/products/...`, and `proxy.ts` rewrites each language's catalog root onto it
+ * (`/fr/produits/...` -> `/fr/products/...`) with the requested root in the `x-catalog-root` header. Returns that root.
+ */
+export async function requestedCatalogRoot(): Promise<string> {
+  return (await headers()).get("x-catalog-root") ?? "products";
 }

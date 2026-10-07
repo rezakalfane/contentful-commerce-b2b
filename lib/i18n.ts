@@ -1,11 +1,9 @@
-/** Locale configuration, URL helpers and UI strings. Content itself lives in Contentful. */
+/** Locale configuration, URL helpers and UI strings. Content itself lives in Amplience. */
 
 export const LOCALES = ["en", "fr"] as const;
 export type Locale = (typeof LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "en";
 
-/** Contentful locale code for each storefront locale. */
-export const CF_LOCALE: Record<Locale, string> = { en: "en", fr: "fr" };
 /** Intl / number / date formatting locale. */
 export const INTL_LOCALE: Record<Locale, string> = { en: "en-GB", fr: "fr-FR" };
 export const LANGUAGE_NAME: Record<Locale, string> = { en: "English", fr: "Français" };
@@ -135,6 +133,15 @@ const en = {
   showingCount: "{count} products",
   showingCountOne: "1 product",
   megaMenuLabel: "Product categories",
+  timePreview: "Time preview",
+  timePreviewHint: "Content as of",
+  timePreviewNote: "Catalog and prices are live.",
+  timePreviewNow: "Now",
+  timePreviewExit: "Exit time preview",
+  timePreviewUpdating: "Updating…",
+  timePreviewSlider: "Move through time",
+  timePreviewPrev: "Previous change",
+  timePreviewNext: "Next change",
   viewAllIn: "View all {name}",
   typeMore: "Type at least 3 characters to search",
   searchClear: "Clear search",
@@ -243,6 +250,15 @@ const fr: Messages = {
   showingCount: "{count} produits",
   showingCountOne: "1 produit",
   megaMenuLabel: "Catégories de produits",
+  timePreview: "Aperçu dans le temps",
+  timePreviewHint: "Contenu au",
+  timePreviewNote: "Catalogue et prix en direct.",
+  timePreviewNow: "Maintenant",
+  timePreviewExit: "Quitter l'aperçu",
+  timePreviewUpdating: "Mise à jour…",
+  timePreviewSlider: "Parcourir le temps",
+  timePreviewPrev: "Changement précédent",
+  timePreviewNext: "Changement suivant",
   viewAllIn: "Voir tout : {name}",
   typeMore: "Saisissez au moins 3 caractères pour rechercher",
   searchClear: "Effacer la recherche",
@@ -317,7 +333,7 @@ export function translateSpec(locale: Locale, name: string, value: string): { na
   return { name: SPEC_NAMES_FR[name] ?? name, value: v };
 }
 
-// Contentful enum (Symbol) fields store fixed English values; show them in the visitor's language.
+// Enum (select) fields store fixed English values; show them in the visitor's language.
 const TOPIC_FR: Record<string, string> = {
   Ordering: "Commande",
   "Pricing & Credit": "Prix et crédit",

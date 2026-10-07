@@ -26,16 +26,17 @@ import {
   translateSpec,
   type Locale,
 } from "@/lib/i18n";
-import { ensureCatalogRoot } from "@/lib/catalog-route";
-import { getGuides, getSpotlights } from "@/lib/site";
+import { ensureCatalogRoot, requestedCatalogRoot } from "@/lib/catalog-route";
+import { getGuides, getSpotlights } from "@/lib/content";
 
 // The route is /[locale]/[root]/...: the BigCommerce path ("/products/<category>/<slug>/", "/produits/<categorie>/<slug>/") is rebuilt here.
 const bcPath = (root: string, slug: string[]) => `/${root}/${slug.join("/")}/`;
 // Categories are at most two levels deep; product pages are always deeper.
 const looksLikeCategory = (slug: string[]) => slug.length <= 2;
 
-export async function generateMetadata({ params }: PageProps<"/[locale]/[root]/[...slug]">): Promise<Metadata> {
-  const { locale, root, slug } = await params;
+export async function generateMetadata({ params }: PageProps<"/[locale]/products/[...slug]">): Promise<Metadata> {
+  const { locale, slug } = await params;
+  const root = await requestedCatalogRoot();
   if (!isLocale(locale) || root !== CATALOG_ROOT[locale]) return {};
   if (looksLikeCategory(slug)) {
     const cat = await getCategoryByPath(bcPath(root, slug), locale);
@@ -51,8 +52,9 @@ export async function generateMetadata({ params }: PageProps<"/[locale]/[root]/[
   };
 }
 
-export default async function CatalogPage({ params, searchParams }: PageProps<"/[locale]/[root]/[...slug]">) {
-  const { locale, root, slug } = await params;
+export default async function CatalogPage({ params, searchParams }: PageProps<"/[locale]/products/[...slug]">) {
+  const { locale, slug } = await params;
+  const root = await requestedCatalogRoot();
   if (!isLocale(locale)) notFound();
   const sp = await searchParams;
   if (!(await ensureCatalogRoot(locale, root, slug, sp))) notFound();
@@ -138,8 +140,8 @@ async function ProductView({ locale, root, slug }: { locale: Locale; root: strin
   if (!product) notFound();
 
   const [spotlights, guides] = await Promise.all([getSpotlights(locale), getGuides(locale)]);
-  const spotlight = spotlights.find((s) => s.bc_product_id === product.entityId);
-  const relatedGuides = guides.filter((g) => g.recommended_bc_products?.includes(product.entityId));
+  const spotlight = spotlights.find((s) => s.bcProductId === product.entityId);
+  const relatedGuides = guides.filter((g) => g.recommendedProducts.some((p) => p.bcProductId === product.entityId));
 
   const specs = product.specs.map((s) => translateSpec(locale, s.name, s.value));
   const highlights = HIGHLIGHT.map((n) => product.specs.find((s) => s.key === n))
@@ -286,13 +288,13 @@ async function ProductView({ locale, root, slug }: { locale: Locale; root: strin
             </section>
           )}
 
-          {spotlight?.use_cases?.length ? (
+          {spotlight?.useCases.length ? (
             <section>
               <h2 className="mb-5 text-[1.75rem]">{t.bestFor}</h2>
               <ul className="divide-y divide-line border-y border-line">
-                {spotlight.use_cases.map((u) => (
-                  <li key={u.use_case} className="grid gap-1 py-4 sm:grid-cols-[13rem_1fr] sm:gap-8">
-                    <h3>{u.use_case}</h3>
+                {spotlight.useCases.map((u) => (
+                  <li key={u.title} className="grid gap-1 py-4 sm:grid-cols-[13rem_1fr] sm:gap-8">
+                    <h3>{u.title}</h3>
                     {u.description && <p className="text-slate">{u.description}</p>}
                   </li>
                 ))}
@@ -329,10 +331,10 @@ async function ProductView({ locale, root, slug }: { locale: Locale; root: strin
           <h2 className="mb-8">{t.guidesFeaturing}</h2>
           <div className="grid gap-x-8 gap-y-10 md:grid-cols-3">
             {relatedGuides.map((g) => (
-              <Link key={g.uid} href={localePath(locale, g.url)} className="group block">
-                {g.hero_image && (
+              <Link key={g.id} href={localePath(locale, g.url)} className="group block">
+                {g.image && (
                   <div className="overflow-hidden rounded-[4px] bg-bench">
-                    <Image src={g.hero_image.url} alt="" width={800} height={450} className="aspect-video w-full object-cover" />
+                    <Image src={g.image.url} alt="" width={800} height={450} className="aspect-video w-full object-cover" />
                   </div>
                 )}
                 <h3 className="mt-4 text-lg font-semibold underline decoration-transparent decoration-2 underline-offset-4 group-hover:decoration-amber">

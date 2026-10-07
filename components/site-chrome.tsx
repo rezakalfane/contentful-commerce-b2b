@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { getCartCount, getCategoryTree, getTilePhotos, productHref } from "@/lib/bigcommerce";
 import { getMessages, localePath, type Locale } from "@/lib/i18n";
-import { getAnnouncement, getNavigation } from "@/lib/site";
+import { getAnnouncement, getNavigation } from "@/lib/content";
 import { LocaleSwitcher } from "./locale-switcher";
 import { MegaMenu, type MegaColumn } from "./mega-menu";
 
@@ -19,13 +19,13 @@ export async function AnnouncementBar({ locale }: { locale: Locale }) {
   const onAmber = bar.style !== "info";
   return (
     <div className={`px-4 py-2 text-center text-sm ${BAR_STYLES[bar.style] ?? BAR_STYLES.info}`}>
-      <span {...(bar.$?.message ?? {})}>{bar.message}</span>
+      <span>{bar.message}</span>
       {bar.cta?.href && (
         <Link
           href={localePath(locale, bar.cta.href)}
           className={`ml-3 font-semibold underline decoration-2 ${onAmber ? "decoration-ink/40" : "decoration-amber"}`}
         >
-          {bar.cta.title}
+          {bar.cta.label}
         </Link>
       )}
     </div>
@@ -88,7 +88,7 @@ export async function SiteHeader({ locale }: { locale: Locale }) {
           </span>
         </Link>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
-          {nav?.header_links?.map((l) =>
+          {nav?.headerLinks.map((l) =>
             l.href === "/products" && columns.length > 0 ? (
               <MegaMenu
                 key={l.href}
@@ -97,13 +97,11 @@ export async function SiteHeader({ locale }: { locale: Locale }) {
                 columns={columns}
                 allLabel={t.allProducts}
                 navLabel={t.megaMenuLabel}
-                tags={l.$?.label}
               />
             ) : (
             <Link
               key={l.href + l.label}
               href={localePath(locale, l.href)}
-              {...(l.$?.label ?? {})}
               className="text-[0.95rem] font-medium text-slate transition-colors hover:text-ink hover:underline hover:decoration-amber hover:decoration-2"
             >
               {l.label}
@@ -134,13 +132,11 @@ export async function SiteFooter({ locale }: { locale: Locale }) {
       <div className="page grid gap-10 py-14 sm:grid-cols-2 md:grid-cols-4">
         <div className="sm:col-span-2 md:col-span-1">
           <p className="font-display text-2xl font-extrabold [font-stretch:88%]">Commerce B2B</p>
-          {nav.legal_text && (
-            <p {...(nav.$?.legal_text ?? {})} className="mt-3 max-w-[28ch] text-sm text-white/60">
-              {nav.legal_text}
-            </p>
+          {nav.legalText && (
+            <p className="mt-3 max-w-[28ch] text-sm text-white/60">{nav.legalText}</p>
           )}
         </div>
-        {nav.footer_columns?.map((col) => (
+        {nav.footerColumns.map((col) => (
           <div key={col.heading}>
             <h2 className="mb-4 font-sans text-base font-semibold tracking-normal [font-stretch:100%]">{col.heading}</h2>
             <ul className="space-y-2.5 text-[0.95rem] text-white/70">
@@ -158,9 +154,9 @@ export async function SiteFooter({ locale }: { locale: Locale }) {
           <div>
             <h2 className="mb-4 font-sans text-base font-semibold tracking-normal [font-stretch:100%]">{t.contact}</h2>
             <ul className="space-y-2.5 text-[0.95rem] text-white/70">
-              {c.sales_email && <li>{c.sales_email}</li>}
-              {c.support_phone && <li>{c.support_phone}</li>}
-              {c.opening_hours && <li>{c.opening_hours}</li>}
+              {c.salesEmail && <li>{c.salesEmail}</li>}
+              {c.supportPhone && <li>{c.supportPhone}</li>}
+              {c.openingHours && <li>{c.openingHours}</li>}
             </ul>
           </div>
         )}

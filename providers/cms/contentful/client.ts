@@ -1,16 +1,15 @@
 import { documentToHtmlString } from "@contentful/rich-text-html-renderer";
-import { timingSafeEqual } from "node:crypto";
 import { cache } from "react";
-import type { Tags } from "./edit";
-import { CF_LOCALE, type Locale } from "./i18n";
+import type { Tags } from "@/core/edit";
+import type { Locale } from "@/lib/i18n";
+
+const CF_LOCALE: Record<Locale, string> = { en: "en", fr: "fr" };
 
 const EU = (process.env.CONTENTFUL_REGION ?? "").trim().toLowerCase() === "eu";
 export const SPACE_ID = process.env.CONTENTFUL_SPACE_ID ?? "";
 const ENVIRONMENT = process.env.CONTENTFUL_ENVIRONMENT || "master";
 const DELIVERY_TOKEN = process.env.CONTENTFUL_DELIVERY_TOKEN ?? "";
 const PREVIEW_TOKEN = process.env.CONTENTFUL_PREVIEW_TOKEN ?? "";
-/** Shared secret in the content preview URL; only requests carrying it may read drafts. */
-const PREVIEW_SECRET = process.env.CONTENTFUL_PREVIEW_SECRET ?? "";
 
 /** Published content comes from the Delivery API (delivery token, published entries only); drafts from the Preview API. */
 const BASE = (isDraft: boolean) =>
@@ -20,23 +19,6 @@ const BASE = (isDraft: boolean) =>
 export type Fields = Record<string, any>;
 /** An entry or asset with its links resolved in place (one `locale` of every field). */
 export type Entry = { id: string; type: string; locale: string; fields: Fields };
-
-// ---------------------------------------------------------------- preview (content preview URL)
-/** Set when the page is opened from Contentful's content preview: draft content is read with the preview token. */
-export type PreviewParams = { draft: true };
-
-/**
- * The content preview URL in Contentful carries `cf_preview=<secret>`. Drafts are only served when the secret matches, so a bare
- * `?cf_preview=1` cannot be used to read unpublished content. In local development any value is accepted.
- */
-export function previewParams(sp: Record<string, string | string[] | undefined>): PreviewParams | undefined {
-  const value = Array.isArray(sp.cf_preview) ? sp.cf_preview[0] : sp.cf_preview;
-  if (!value) return undefined;
-  if (process.env.NODE_ENV !== "production") return { draft: true };
-  const a = Buffer.from(value);
-  const b = Buffer.from(PREVIEW_SECRET);
-  return PREVIEW_SECRET && a.length === b.length && timingSafeEqual(a, b) ? { draft: true } : undefined;
-}
 
 // ---------------------------------------------------------------- unsaved edits (live typing)
 /**
@@ -51,7 +33,7 @@ export const isOverlayValue = (v: unknown): v is OverlayValue =>
   (Array.isArray(v) && v.every((x) => typeof x === "string" || typeof x === "number")) ||
   (!!v && typeof v === "object" && (v as { nodeType?: unknown }).nodeType === "document");
 
-/** A draft entry as the Live Preview SDK needs it: the overlay-able field values for one locale. */
+/** A draft entry as the Live Preview SDK needs it: the saved overlay-able field values for one locale. */
 export type PreviewEntity = { id: string; type: string; locale: string; fields: Record<string, OverlayValue> };
 
 const OVERLAY_TTL_MS = 5 * 60_000;
@@ -75,10 +57,6 @@ function overlayFor(id: string, locale: string): Record<string, OverlayValue> | 
   if (Date.now() - o.at > OVERLAY_TTL_MS) return void overlays.delete(`${id}:${locale}`);
   return o.fields;
 }
-
-/** The draft entries rendered by the current request (filled while links are resolved), for the Live Preview subscription. */
-const registry = cache(() => new Map<string, PreviewEntity>());
-export const getPreviewEntities = (): PreviewEntity[] => [...registry().values()].slice(0, 100);
 
 // ---------------------------------------------------------------- fetching
 type Params = Record<string, string | number | undefined>;
@@ -106,12 +84,9 @@ function resolve(res: Response, locale: string, isDraft: boolean): Entry[] {
     const fields: Fields = {};
     for (const [k, v] of Object.entries(r.fields ?? {})) fields[k] = walk(v);
     if (isDraft && type !== "Asset") {
-      const saved: Record<string, OverlayValue> = {};
-      for (const [k, v] of Object.entries(fields)) if (isOverlayValue(v)) saved[k] = v;
-      registry().set(`${r.sys.id}:${locale}`, { id: r.sys.id, type, locale, fields: saved });
-      // Unsaved values typed in the editor replace the saved draft value (the registry keeps the saved one as the baseline).
+      // Unsaved values typed in the editor replace the saved draft value.
       const edits = overlayFor(r.sys.id, locale);
-      if (edits) for (const [k, v] of Object.entries(edits)) if (k in saved) fields[k] = v;
+      if (edits) for (const [k, v] of Object.entries(edits)) if (isOverlayValue(fields[k])) fields[k] = v;
     }
     return { id: r.sys.id, type, locale, fields };
   };
@@ -152,13 +127,13 @@ const fetchEntries = cache(async (contentType: string, params: string, locale: s
 });
 
 /** Entries of a content type for the locale (fields fall back to English where French is empty), up to 1000. */
-export function getEntries(contentType: string, locale: Locale, preview?: PreviewParams, params: Params = {}) {
-  return fetchEntries(contentType, JSON.stringify(params), CF_LOCALE[locale], !!preview);
+export function getEntries(contentType: string, locale: Locale, draft: boolean, params: Params = {}) {
+  return fetchEntries(contentType, JSON.stringify(params), CF_LOCALE[locale], draft);
 }
 
 /** One entry of a content type by slug. Undefined when it does not exist (or is not published). */
-export async function getEntry(contentType: string, slug: string, locale: Locale, preview?: PreviewParams) {
-  return (await getEntries(contentType, locale, preview, { "fields.slug": slug, limit: 1 }))[0];
+export async function getEntry(contentType: string, slug: string, locale: Locale, draft: boolean) {
+  return (await getEntries(contentType, locale, draft, { "fields.slug": slug, limit: 1 }))[0];
 }
 
 // ---------------------------------------------------------------- mapping helpers
@@ -190,27 +165,51 @@ export const html = (doc?: Parameters<typeof documentToHtmlString>[0]): string =
   }
 };
 
-/** Names the storefront shapes use that differ from the Contentful field id (everything else is the camelCase of the shape name). */
-const FIELD_ID: Record<string, string> = {
-  banner_image: "image", banner_description: "description", call_to_action: "ctaLabel", rich_text: "intro", name: "name", answerHtml: "answer",
+/**
+ * Canonical field names (what components spread as `x.$.<name>`) that are stored under another Contentful field id, per content type.
+ * Names that are the same in both places are not listed.
+ */
+const FIELD_ID: Record<string, Record<string, string>> = {
+  heroBanner: { cta: "ctaLabel" },
+  featureBlock: { html: "copy" },
+  textBlock: { html: "text" },
+  imageBlock: { img: "image" },
+  videoBlock: { title: "videoTitle" },
+  blogPost: { description: "seoDescription", image: "featuredImage", blocks: "content", html: "body" },
+  author: { avatar: "picture" },
+  faq: { answerHtml: "answer" },
+  buyingGuide: { image: "heroImage" },
+  guideStep: { title: "stepTitle", body: "stepBody" },
+  productSpotlight: { image: "editorialImage" },
+  useCase: { title: "useCase" },
 };
 
 /**
- * Live Preview inspector attributes for an entry. Returned for every field name (`x.$.title`, `x.$.hero_image`...) and mapped to the
- * Contentful field id. Empty outside preview, so published HTML carries no editing markup.
+ * Live Preview inspector attributes for an entry. Returned for every field name (`x.$.title`, `x.$.image`...) and mapped to the
+ * Contentful field id of that content type. Empty outside preview, so published HTML carries no editing markup.
  */
-export function editTags(entry: Entry | undefined, preview?: PreviewParams): Tags {
-  if (!preview || !entry) return {};
+export function editTags(entry: Entry | undefined, draft: boolean): Tags {
+  if (!draft || !entry) return {};
   return new Proxy({}, {
     get: (_, key) => {
       if (typeof key !== "string") return undefined;
       const name = key.replace(/__parent$/, "");
-      const field = FIELD_ID[name] ?? name.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
+      const field = FIELD_ID[entry.type]?.[name] ?? name;
       return {
         "data-contentful-entry-id": entry.id,
         "data-contentful-field-id": field,
         "data-contentful-locale": entry.locale,
       };
     },
+  });
+}
+
+/** The saved draft values of entries (by id) that the Live Preview SDK compares the editor's unsaved values with. Overlays are not applied. */
+export async function getBaseline(ids: string[], locale: Locale): Promise<PreviewEntity[]> {
+  const res = await request("/entries", { "sys.id[in]": ids.slice(0, 100).join(","), locale: CF_LOCALE[locale], include: 0, limit: 100 }, true);
+  return res.items.map((r) => {
+    const fields: Record<string, OverlayValue> = {};
+    for (const [k, v] of Object.entries(r.fields ?? {})) if (isOverlayValue(v)) fields[k] = v;
+    return { id: r.sys.id, type: r.sys.contentType?.sys.id ?? "", locale: CF_LOCALE[locale], fields };
   });
 }

@@ -1,12 +1,10 @@
-import { getPreviewEntities, SPACE_ID, type PreviewParams } from "@/lib/contentful";
-import { LivePreview } from "./live-preview";
+import { EditSupport as Contentful } from "@/providers/cms/contentful/edit-support";
+import { isPreviewRequest } from "@/lib/request";
 
 /**
- * Loads the Contentful Live Preview SDK for the entries a page renders, only when the page is opened from Contentful's content
- * preview. Click-to-edit works from the `data-contentful-*` attributes in the HTML (see `editTags`); plain-text edits show up as
- * they are typed (see `LivePreview`), the rest after the entry is saved.
+ * Loads Contentful's Live Preview SDK, only for requests the proxy verified as an editor's preview (x-preview). Click-to-edit works
+ * from the edit attributes in the HTML (`$` on the content, see core/edit.ts); the SDK adds live updates on top.
  */
-export function EditSupport({ preview, entry }: { preview?: PreviewParams; entry?: { id: string } }) {
-  if (!preview || !entry) return null;
-  return <LivePreview space={SPACE_ID} environment={process.env.CONTENTFUL_ENVIRONMENT || "master"} entities={getPreviewEntities()} />;
+export async function EditSupport() {
+  return (await isPreviewRequest()) ? <Contentful /> : null;
 }
