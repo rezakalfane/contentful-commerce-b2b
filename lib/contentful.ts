@@ -38,6 +38,36 @@ export function previewParams(sp: Record<string, string | string[] | undefined>)
   return PREVIEW_SECRET && a.length === b.length && timingSafeEqual(a, b) ? { draft: true } : undefined;
 }
 
+// ---------------------------------------------------------------- unsaved edits (live typing)
+/** A draft entry as the Live Preview SDK needs it: plain-text field values only (strings), for one locale. */
+export type PreviewEntity = { id: string; type: string; locale: string; fields: Record<string, string> };
+
+const OVERLAY_TTL_MS = 5 * 60_000;
+const OVERLAY_MAX = 200;
+type Overlay = { fields: Record<string, string>; at: number };
+/** Unsaved plain-text edits sent by the editor, by `entryId:locale`. Kept in server memory for a few minutes; only read for drafts. */
+const overlays = (globalThis as { __cfOverlays?: Map<string, Overlay> }).__cfOverlays ?? new Map<string, Overlay>();
+(globalThis as { __cfOverlays?: Map<string, Overlay> }).__cfOverlays = overlays;
+
+/** Replaces the unsaved edits of an entry (an empty `fields` clears them). */
+export function setOverlay(id: string, locale: string, fields: Record<string, string>) {
+  const key = `${id}:${locale}`;
+  if (!Object.keys(fields).length) return void overlays.delete(key);
+  if (overlays.size >= OVERLAY_MAX) overlays.delete(overlays.keys().next().value as string);
+  overlays.set(key, { fields, at: Date.now() });
+}
+
+function overlayFor(id: string, locale: string): Record<string, string> | undefined {
+  const o = overlays.get(`${id}:${locale}`);
+  if (!o) return undefined;
+  if (Date.now() - o.at > OVERLAY_TTL_MS) return void overlays.delete(`${id}:${locale}`);
+  return o.fields;
+}
+
+/** The draft entries rendered by the current request (filled while links are resolved), for the Live Preview subscription. */
+const registry = cache(() => new Map<string, PreviewEntity>());
+export const getPreviewEntities = (): PreviewEntity[] => [...registry().values()].slice(0, 100);
+
 // ---------------------------------------------------------------- fetching
 type Params = Record<string, string | number | undefined>;
 type Raw = { sys: { id: string; type: string; contentType?: { sys: { id: string } } }; fields?: Fields };
@@ -47,7 +77,7 @@ const isLink = (v: unknown): v is { sys: { type: "Link"; linkType: string; id: s
   !!v && typeof v === "object" && (v as { sys?: { type?: string } }).sys?.type === "Link";
 
 /** Replaces links with the entries/assets they point to (from `items` and `includes`), down to `depth` levels. */
-function resolve(res: Response, locale: string): Entry[] {
+function resolve(res: Response, locale: string, isDraft: boolean): Entry[] {
   const raw = new Map<string, Raw>();
   for (const r of [...(res.includes?.Entry ?? []), ...(res.includes?.Asset ?? []), ...res.items]) raw.set(`${r.sys.type}:${r.sys.id}`, r);
   const build = (r: Raw, depth: number): Entry => {
@@ -63,6 +93,14 @@ function resolve(res: Response, locale: string): Entry[] {
     };
     const fields: Fields = {};
     for (const [k, v] of Object.entries(r.fields ?? {})) fields[k] = walk(v);
+    if (isDraft && type !== "Asset") {
+      const saved: Record<string, string> = {};
+      for (const [k, v] of Object.entries(fields)) if (typeof v === "string") saved[k] = v;
+      registry().set(`${r.sys.id}:${locale}`, { id: r.sys.id, type, locale, fields: saved });
+      // Unsaved text typed in the editor replaces the saved draft value (the registry keeps the saved one as the baseline).
+      const edits = overlayFor(r.sys.id, locale);
+      if (edits) for (const [k, v] of Object.entries(edits)) if (k in saved) fields[k] = v;
+    }
     return { id: r.sys.id, type, locale, fields };
   };
   return res.items.map((r) => build(r, 3));
@@ -83,6 +121,7 @@ const fetchEntries = cache(async (contentType: string, params: string, locale: s
   resolve(
     await request("/entries", { content_type: contentType, locale, include: 3, limit: 1000, ...(JSON.parse(params) as Params) }, isDraft),
     locale,
+    isDraft,
   ),
 );
 

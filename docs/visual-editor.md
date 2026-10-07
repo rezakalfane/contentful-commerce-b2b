@@ -17,8 +17,11 @@ Contentful web app ── "Open Live Preview" ──► storefront page  ?cf_pre
    `data-contentful-entry-id`, `data-contentful-field-id` and `data-contentful-locale` attributes to the elements.
 3. `components/edit-support.tsx` renders `components/live-preview.tsx`, which starts the Live Preview SDK **only in preview**.
    The SDK outlines the tagged elements and tells the editor which field was clicked.
-4. When the editor **saves** an entry (Contentful autosaves shortly after typing stops), the SDK delivers a save event and the page calls
-   `router.refresh()`; the server re-renders from the new draft.
+4. While the editor **types**, the SDK hands over the unsaved values of the entries on the page. Changed plain-text fields (titles,
+   summaries, labels…) are sent to a server action that keeps them for a few minutes, and the page re-renders with them (`router.refresh()`),
+   so text appears as it is typed (D31).
+5. When the editor **saves** an entry (Contentful autosaves shortly after typing stops), the SDK delivers a save event, the overlay is
+   cleared and the page calls `router.refresh()`; the server re-renders from the new draft. Rich text, links and media update at this step.
 
 ![Entry editor with Open Live Preview](images/cf-entry-editor.jpg)
 *The entry form: the sidebar has **Open Live Preview** under Preview.*
@@ -103,9 +106,9 @@ With a Premium plan the editor's locale menu would pass `fr` and the template wo
 
 1. In Contentful open **Content**, pick an entry (a blog post, a guide, the `home` page…).
 2. Click **Open Live Preview** in the sidebar.
-3. Click an outlined element to edit its field; type; wait for the autosave, and the page refreshes. **Publish** makes the change live.
+3. Click an outlined element to edit its field; type: plain text shows up as you type, rich text and references after the autosave. **Publish** makes the change live.
 
-Per-keystroke updates are **not** implemented (D31): the pages are server-rendered, so a refresh follows each save.
+Typed updates cover plain-text fields only (D31): the pages are server-rendered, so rich text, links and media follow each save.
 
 ## Troubleshooting
 
@@ -114,7 +117,7 @@ Per-keystroke updates are **not** implemented (D31): the pages are server-render
 | Blank frame, "refused to connect" | the CSP does not allow the editor, or the platform URL is wrong | check the `Content-Security-Policy` header and the preview platform URL |
 | Page loads but shows no outlines | draft mode not on (wrong secret), or the preview token differs from the deployment's | re-run `editor.py` after changing `CONTENTFUL_PREVIEW_SECRET`; check the variable on that deployment |
 | Page shows published content in the preview | same as above, or the entry has no unpublished changes | check the secret; edit the entry |
-| Edits do not appear after typing | the save event is not delivered | `enableLiveUpdates` must be `true`; wait for the autosave; check the console for "Live Preview not started" |
+| Edits do not appear after typing | the edit/save events are not delivered, or the draft request lacks the secret | `enableLiveUpdates` must be `true`; wait for the autosave; check the console for "Live Preview not started" |
 | French entry opens the English page | the Free plan cannot switch the preview locale | use the storefront's EN / FR switcher inside the preview (D30) |
 | Whole page replaced by an error screen | the SDK threw (unsupported parent origin) | `init` must stay inside `try/catch`; check `targetOrigin` |
 | Local editing fails | the editor requires HTTPS | `npm run dev:https` and accept the certificate once |

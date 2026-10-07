@@ -83,7 +83,7 @@ redirect through `/api/switch-locale`; filter values are translated, so attribut
 **Decision.** Keep the Server Components. The Live Preview SDK tags the page and, when an entry is saved, the page calls `router.refresh()` so the
 server renders from the new draft.
 **Why.** One rendering path for the site and the editor, with no client-side data fetching.
-**Trade-off.** Updates follow the autosave rather than each keystroke (see D31).
+**Trade-off.** Plain text updates as it is typed; everything else follows the save (see D31).
 **Rejected.** Rendering the page client-side from raw Contentful data with `useContentfulLiveUpdates`: it would replace the page components and
 the BigCommerce composition.
 
@@ -185,11 +185,22 @@ which limit). It worked after the user deleted an unused `staging` space.
 **Why.** The French page then renders with French draft content, and the edit tags carry `data-contentful-locale`, so clicking an element focuses the French field.
 **Consequence.** The "editor opens the French page" goal is met by one extra click on the Free plan, and fully with a Premium plan.
 
-### D31. Refresh on save; no per-keystroke updates
-**Decision.** `enableLiveUpdates` is `true` (the SDK delivers the save event only then), and the page refreshes after each save. Per-keystroke updates
-are not implemented.
-**Why.** Contentful's live updates patch **client-side data** (`useContentfulLiveUpdates`), and these pages are server-rendered with mapped shapes.
-**Later.** A server overlay (the client sends the edited fields to a server action that renders the page from them) would do it.
+### D31. Typed plain text through a server overlay; everything else after save
+**Decision.** `enableLiveUpdates` is `true` (the SDK delivers the edit and save events only then). While the editor types, the SDK
+answers the page's subscription with the entries' unsaved values. `components/live-preview.tsx` compares them with the values the page
+opened with and sends the changed **plain-text** fields (Symbol and Text) to the server action `updatePreviewOverlay`
+(`app/actions/preview.ts`), which keeps them in server memory for five minutes (`setOverlay` in `lib/contentful.ts`); the page then
+re-renders with them (`router.refresh()`). Rich text, links and media are not overlaid: they appear after the entry is saved, which
+also clears the overlay.
+**Why.** Contentful's live updates patch **client-side data** (`useContentfulLiveUpdates`), and these pages are server-rendered with
+mapped shapes. An overlay keeps the page components unchanged.
+**Guards.** The action requires the same `cf_preview` secret as the page, accepts only plain strings (id, locale and field names are
+pattern-checked, 20 000 characters per value, 100 entries per call) and the overlay is only read for draft requests, so the published
+site never shows it.
+**Trade-offs.** The overlay lives in the memory of one server instance: on Vercel a refresh that lands on another instance misses the
+latest keystroke, and the next autosave catches up. Measured with a simulated editor: about 0.5 s from the editor's message to the
+new text (a draft page render is about 0.5 s on production, mostly the Preview API call). Not verified in the real editor: the exact
+shape of its answers (the code accepts a whole data tree or a single entry, with plain or locale-keyed fields).
 
 ### D32. The Live Preview SDK is guarded
 **Decision.** `ContentfulLivePreview.init` runs in `try/catch`, with `targetOrigin` set to the Contentful web app hosts (plus the framing page's origin in development).
