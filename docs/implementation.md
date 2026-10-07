@@ -4,26 +4,31 @@ How each feature works and where to find it. Paths are relative to `storefront/`
 
 ## 1. Data layer
 
-### Contentful: `lib/contentful.ts`, `lib/site.ts`, `lib/blog.ts`
+### Contentful: `providers/cms/contentful/`, `core/content.ts`, `lib/content.ts`
 
-- **`getEntries(contentType, locale, preview?, params?)`** and **`getEntry(contentType, slug, locale, preview?)`** are the only entry points for reading.
-  They pick the locale (`en` / `fr`) and the API (Delivery with the delivery token, or Preview with the preview token when `preview` is set), ask for
-  `include=3`, replace links with the entries and assets they point to (`resolve()`, three levels; a link to an unpublished target is dropped), and
-  wrap the call in React `cache()` so one request fetches a list once. Published reads use `revalidate: 60` with the tag `contentful`; drafts are `no-store`.
-  Missing entries return `undefined` (pages call `notFound()`).
-- **`previewParams(searchParams)`** returns `{ draft: true }` only for a Live Preview request carrying the preview secret
-  ([visual-editor.md](visual-editor.md#how-draft-mode-is-switched-on)).
-- **Mapping:** `lib/blog.ts` and `lib/site.ts` turn entries into the plain shapes the pages read (`Post`, `Guide`, `Faq`, `Spotlight`,
-  `HomePage`, `Navigation`…): assets become `{ url }`, `cta_label` + `cta_href` become `{ title, href }`, one-per-line text becomes arrays,
-  rich text becomes HTML (`bodyHtml`, `answerHtml`, `copy`). The shapes are the ones the other CMS versions used, so the components did not change (only `id` is now the entry id string).
-- **`editTags(entry, preview)`** returns the Live Preview attributes for an entry and field (empty outside preview); it is stored as `entry.$`,
-  so components keep spreading `{...entry.$?.field}`.
-- **Authors** are fetched once per request (`getAuthorMap`) and joined to posts and guides by entry id. Related FAQs and featured posts come from the resolved links.
-- Fetchers are typed and locale-first: `getNavigation(locale)`, `getAnnouncement(locale)`, `getFaqs(locale)`, `getGuides(locale)`,
-  `getGuide(locale, slug)`, `getSpotlights(locale)`, `getPage(locale, url)`, `getPosts(locale)`, `getPost(locale, slug)`, `getListingPage(locale)`.
-- Detail entries are looked up by their **`slug`** field (`blogPost`, `buyingGuide`). Slugs are identical in every locale (see
-  [decisions.md](decisions.md)). `getPage("/")` reads the `page` entry with slug `home`, `getPage("/guides")` the one with slug `guides`.
-- Rich text (post bodies, FAQ answers) is converted to HTML by `documentToHtmlString` from `@contentful/rich-text-html-renderer`.
+- **`core/content.ts`** is the content model every component renders: `Page { title, description, blocks }`, the `Block` union (`hero`, `text`,
+  `image`, `video`, `feature`, `categories`, `spotlights`, `guides`, `posts`, `postListing`, `guideListing`, `faqs`), `Post` (with its own
+  `blocks`: text, image, video), `Guide`, `Faq`, `Spotlight`, `Author`, `Navigation`, `Announcement`. Every entity and block can carry `$`, the
+  Live Preview attributes (empty outside preview).
+- **`lib/content.ts`** is the facade the pages and components call: `getPage(key, locale)`, `getPosts`, `getPost(slug, locale)`, `getGuides`,
+  `getGuide(slug, locale)`, `getSpotlights`, `getNavigation`, `getAnnouncement`, plus `pageLabel`. It delegates to the Contentful provider; no
+  page or component names Contentful. (The optional `at` argument is a time-travel hook that Contentful ignores.)
+- **`providers/cms/contentful/client.ts`**: `getEntries(contentType, locale, draft, params?)` and `getEntry(contentType, slug, locale, draft)` are the
+  only entry points for reading. They pick the locale (`en` / `fr`) and the API (Delivery with the delivery token, or Preview with the preview
+  token when `draft` is set), ask for `include=3`, replace links with the entries and assets they point to (`resolve()`, three levels; a link
+  to an unpublished target is dropped), and wrap the call in React `cache()`. Published reads use `revalidate: 60` with the tag `contentful`;
+  drafts are `no-store` (plus the 5-second draft cache and the typed-edit overlay, see section 9). `getBaseline(ids, locale)` reads saved draft
+  values for Live Preview.
+- **`providers/cms/contentful/mapper.ts`** turns entries into the model: assets become `{ url, alt }`, `ctaLabel` + `ctaHref` become `{ label, href }`,
+  arrays of text become `string[]`, rich text becomes HTML, `collectionBlock` entries become the right block for their `kind`, and
+  `page.components` / `blogPost.content` become ordered `blocks`. `editTags(entry, draft)` builds `$` for draft requests, mapping a model field name
+  to the Contentful field id of that content type (for example `html` is `copy` on a `featureBlock` and `text` on a `textBlock`).
+- **`providers/cms/contentful/index.ts`** exposes the reads as the provider; each one asks `isPreviewRequest()` (`lib/request.ts`) whether the
+  request is a verified draft preview, so pages never pass preview state around.
+- Pages are looked up by the **`slug`** field (`getPage("home")`, `getPage("faq")`...), posts and guides by slug too. Slugs are identical in every locale
+  (see [decisions.md](decisions.md)). Authors are mapped from the resolved link, and related FAQs come from the resolved links.
+- Rich text (text blocks, feature copy, FAQ answers) is converted to HTML by `documentToHtmlString` from `@contentful/rich-text-html-renderer`; a malformed
+  document renders as empty.
 
 ### BigCommerce: `lib/bigcommerce.ts`
 
@@ -33,24 +38,28 @@ A thin GraphQL client (`gql()`), the query fragments, and typed functions. Detai
 
 | Route | File | Data |
 |---|---|---|
-| `/` | `app/[locale]/page.tsx` | the `home` page entry (hero, feature blocks) + spotlights, guides, BigCommerce cards |
-| `/blog` | `blog/page.tsx` | `blogListingPage`, `blogPost[]` |
-| `/blog/[slug]` | `blog/[slug]/page.tsx` | one `blogPost` + author + related post |
-| `/guides`, `/guides/[slug]` | `guides/…` | `buyingGuide`, related FAQs, live BigCommerce products |
-| `/faq` | `faq/page.tsx` | the `faq` page entry + `faq[]` entries grouped by topic |
-| `/products`, `/fr/produits` | `[root]/page.tsx` | BigCommerce faceted search over the whole catalog |
-| `/products/<category>…`, `/fr/produits/<categorie>…` | `[root]/[...slug]/page.tsx` | category **or** product (see below) |
+| `/` | `app/[locale]/page.tsx` | the `home` Page, rendered block by block |
+| `/faq`, `/guides`, `/blog`, any other page slug | `app/[locale]/[...slug]/page.tsx` | the Page with that slug (`notFound()` if none) |
+| `/blog/[slug]` | `blog/[slug]/page.tsx` | one `blogPost` (its blocks) + author + related reading |
+| `/guides/[slug]` | `guides/[slug]/page.tsx` | `buyingGuide`, related FAQs, live BigCommerce products |
+| `/products`, `/fr/produits` | `products/page.tsx` | BigCommerce faceted search over the whole catalog |
+| `/products/<category>…`, `/fr/produits/<categorie>…` | `products/[...slug]/page.tsx` | category **or** product (see below) |
 | `/cart` | `cart/page.tsx` | BigCommerce cart |
 
-Pages treat a request from Live Preview (`?cf_preview=<secret>`) as a draft preview and add `<EditSupport>`,
-which starts the Live Preview SDK for the entry they render.
+The Page routes call `PageContent` (`components/page-content.tsx`), which fetches the Page and hands its `blocks` to `PageBlocks`
+(`components/page-blocks.tsx`): one view per block type, consecutive feature blocks share a band, and `spotlights` blocks fetch live
+BigCommerce products. `PostContent` and `GuideContent` do the same for articles and guides. Which request is a draft is decided by the proxy
+(`x-preview`), so the pages carry no preview code. The layout renders `EditSupport` (`components/edit-support.tsx`), which loads the Live
+Preview SDK only for verified preview requests.
 
 ### The catalog routes
 
 BigCommerce translates catalog URLs, so the catalog lives at `/products/...` in English and `/fr/produits/...` in French (the root category
-"Products" is "Produits" in French, and every category and product slug below it is translated too). The routes are
-`app/[locale]/[root]/page.tsx` (listing) and `app/[locale]/[root]/[...slug]/page.tsx` (category or product), where `[root]` is the language's
-catalog root (`CATALOG_ROOT` in `lib/i18n.ts`). Static routes (`/blog`, `/guides`, `/faq`, `/cart`) take precedence over `[root]`.
+"Products" is "Produits" in French, and every category and product slug below it is translated too). There is **one static route**,
+`app/[locale]/products/page.tsx` (listing) and `app/[locale]/products/[...slug]/page.tsx` (category or product), because the page route
+`[...slug]` would otherwise swallow a dynamic root segment. `proxy.ts` rewrites each language's catalog root onto `/products/...` (for example
+`/fr/produits/...` to `/fr/products/...`) and passes the requested root in the `x-catalog-root` header, which the pages read with
+`requestedCatalogRoot()` (`lib/catalog-route.ts`); the root of each language is `CATALOG_ROOT` in `lib/i18n.ts`.
 
 - The page rebuilds the BigCommerce path from `root` and the slug (`/produits/batteries-automobiles/...`) and resolves it **in the page's
   language**: a path only resolves in its own language. **One or two segments are categories, three or more are products.** If the guess is
@@ -67,23 +76,24 @@ catalog root (`CATALOG_ROOT` in `lib/i18n.ts`). Static routes (`/blog`, `/guides
 
 ## 3. Home page
 
-The `home` entry (a `page`) drives it:
+The `home` Page is a list of blocks, in the order an editor puts them (seeded as follows):
 
-- **Hero** (`components/hero.tsx`, `variant="home"`): headline, description and button come from the
-  page's linked `heroBanner`; its `image` and the page's own `image` are the two staggered photos (both selectable in Live Preview). A
-  secondary "All products" button is added in code.
-- **Intro** from the page's `intro` (rich text).
-- **Shop by category** (`components/category-tiles.tsx`): the five top-level catalog categories as a photo mosaic. The
+- **Hero** (`components/hero.tsx`, variant `home`): the page's `heroBanner` gives the headline, description, button and the two staggered photos
+  (`image` and `secondImage`, both selectable in Live Preview). A secondary "All products" button is added in code for the home variant.
+- **Intro**: a `textBlock` (rich text).
+- **Shop by category** (`categories` collection, `components/category-tiles.tsx`): the five top-level catalog categories as a photo mosaic. The
   photos are static files in `public/images/categories/`; labels are localized (`categoryLabel`).
-- **Value blocks**: the page's `blocks` (linked `featureBlock`s: title, copy, image, layout `image_left` / `image_right`).
-- **Trade favourites**: `productSpotlight` entries with `isFeatured`, enriched with live BigCommerce price, photo and link.
-- **From the buying guides**: the first three guides.
+- **Value blocks**: three `featureBlock`s (title, copy, image, layout `image_left` / `image_right`) in one band.
+- **Trade favourites**: a `spotlights` collection whose items are `productSpotlight` entries, enriched with live BigCommerce price, photo and link.
+- **From the buying guides**: a `guides` collection (the first three guides) with a link label.
+
+Reordering, adding or removing a block in Contentful changes the page; the code only knows how to draw each kind of block.
 
 ![Trade favourites](images/home-spotlights.jpg)
 *Trade favourites: editorial content from Contentful with live price, photo and link from BigCommerce.*
 
 ![A value block](images/home-blocks.jpg)
-*A value block from the page's `blocks` (title, copy, image, layout).*
+*A value block (title, copy, image, layout).*
 
 ![From the buying guides](images/home-guides.jpg)
 *The guides strip: the first three guides, with photo, audience and read time.*
@@ -98,7 +108,7 @@ The `home` entry (a `page`) drives it:
   absolutely positioned under the header.
 - **Announcement bar**: the first `announcementBar` that is active, inside its date window and aimed at guests
   (`audience` is `everyone` or `guests`); style `info` (ink), `promo` or `warning` (amber).
-- **Footer** columns, contact details and legal line come from `site_navigation`.
+- **Footer** columns, contact details and legal line come from the `siteNavigation` entry.
 - **Cart link** shows the item count by reading the cart cookie and asking BigCommerce (`CartLink`, in a `Suspense`).
 
 ![Product mega menu](images/mega-menu.jpg)
@@ -192,11 +202,12 @@ faceted search with `categoryEntityId`, which includes all descendants, instead 
 
 ## 8. Content pages
 
-- **Blog**: listing with hero, search (client-side text match over title and description), featured and all posts; post
-  page with main column + author sidebar, related posts. Dates and labels follow the locale.
-- **Buying guides**: guide cards; guide page with numbered steps (a true sequence), pro tips, a checklist, related FAQs and
+- **Blog**: the `blog` Page: hero, a `posts` collection (latest articles) and a `postListing` collection with search (text match over title and
+  description) and all posts; a post page renders its content blocks (text, image, video) in a main column with an author sidebar, plus related
+  posts. Dates and labels follow the locale.
+- **Buying guides**: the `guides` Page (hero and a `guideListing` collection of cards); guide page with numbered steps (a true sequence), pro tips, a checklist, related FAQs and
   **recommended products** that link to product pages with live price.
-- **FAQ**: grouped by `topic` (the select value is English; `topicLabel()` shows the French label), native
+- **FAQ**: the `faq` Page (hero and a `faqs` collection), grouped by `topic` (the select value is English; `topicLabel()` shows the French label), native
   `<details>` accordions.
 
 ![A buying guide](images/guide.jpg)
@@ -210,14 +221,15 @@ faceted search with `categoryEntityId`, which includes all descendants, instead 
 
 ## 9. Editing support
 
-`components/edit-support.tsx` renders `components/live-preview.tsx` (the Live Preview SDK) for the entry a page shows (only for preview requests). Inspector
-attributes (`data-contentful-entry-id`, `-field-id`, `-locale`) are spread from `entry.$.<field>` on key elements. See [visual-editor.md](visual-editor.md).
+`components/edit-support.tsx` renders `providers/cms/contentful/edit-support.tsx`, which starts the Live Preview SDK (`live-preview.tsx`) only for requests
+the proxy verified as a preview (`isPreviewRequest()`). Inspector attributes (`data-contentful-entry-id`, `-field-id`, `-locale`) are added by
+`tag(entity, field)` (`core/edit.ts`) from the `$` carried by the mapped content, on key elements of every block view and card. See
+[visual-editor.md](visual-editor.md).
 
-Typed edits go through three pieces: `lib/contentful.ts` (registers the draft entries a request renders, keeps the unsaved values sent by the
-editor in an in-memory overlay applied to draft reads only, and caches draft responses for five seconds), the server action
-`app/actions/preview.ts` (`updatePreviewOverlay`: checks the preview secret and the values, stores them and calls `refresh()`), and
-`components/live-preview.tsx` (subscribes to the editor's answers, diffs them against the values the page opened with, coalesces edits).
-See decision D31.
+Typed edits go through three pieces: `providers/cms/contentful/client.ts` (keeps the unsaved values sent by the editor in an in-memory overlay applied to
+draft reads only, caches draft responses for five seconds, and looks up saved baselines), the server actions in `providers/cms/contentful/actions.ts`
+(`previewBaseline` and `updatePreviewOverlay`: check the preview secret and the values, store them and call `refresh()`), and `live-preview.tsx`
+(finds the tagged entry ids in the DOM, subscribes to the editor's answers, diffs them against the saved baseline, coalesces edits). See decision D31.
 
 ## 10. Internationalization
 
@@ -227,9 +239,10 @@ Routing in `proxy.ts`, strings and helpers in `lib/i18n.ts`. See [i18n.md](i18n.
 
 | I want to… | Change |
 |---|---|
-| Edit wording, banners, FAQs, guides, nav | Contentful (no code) |
+| Edit wording, banners, FAQs, guides, nav, or reorder the blocks of a page | Contentful (no code) |
 | Add a UI string | `lib/i18n.ts` (`en` and `fr` objects, type-checked to match) |
 | Add a filterable attribute | `FACET_NAMES` in `lib/bigcommerce.ts` (+ French label in `SPEC_NAMES_FR`) |
 | Change the mega menu | `megaColumns()` in `components/site-chrome.tsx`, `components/mega-menu.tsx` |
 | Change colours, type, spacing | tokens in `app/globals.css` |
-| Add a page type | a content type in `scripts/seed/schemas.py` (then run it), a route under `app/[locale]/`, a fetcher and mapper in `lib/`, edit tags, a seed |
+| Add a page | an entry of type `page` with its components in Contentful (served at `/<slug>`, no code) |
+| Add a block type | a content type in `tools/contentful/schemas.py` (then run it), a `Block` variant in `core/content.ts`, a case in `providers/cms/contentful/mapper.ts` and a view in `components/page-blocks.tsx` with `tag(...)` on its editable elements, plus a field map in `client.ts` if field names differ |

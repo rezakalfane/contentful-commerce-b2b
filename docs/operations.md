@@ -18,7 +18,7 @@ Copy `.env.example` to `.env.local`. **All are server-side**; none use the `NEXT
 | `CONTENTFUL_REGION` | yes | `us` or `eu`, the space's data region (`us` today) |
 | `CONTENTFUL_DELIVERY_TOKEN` | yes | reads **published** content only |
 | `CONTENTFUL_PREVIEW_TOKEN` | for Live Preview | reads drafts |
-| `CONTENTFUL_PREVIEW_SECRET` | for Live Preview | random string in the content preview URL (`?cf_preview=<secret>`); drafts are served only when it matches |
+| `CONTENTFUL_PREVIEW_SECRET` | for Live Preview | random string in the content preview URL (`?cf_preview=<secret>`); `proxy.ts` unlocks drafts only when it matches |
 | `CONTENTFUL_MANAGEMENT_TOKEN` | seeding only | personal access token (Management API); **never** needed to run the site |
 | `BIGCOMMERCE_STORE_HASH` | yes | store hash |
 | `BIGCOMMERCE_CHANNEL_ID` | yes | channel ID of the headless storefront channel |
@@ -35,7 +35,7 @@ npm run dev:https      # https://localhost:3000, required to edit in Live Previe
 ```
 
 After changing `next.config.ts`, `proxy.ts` or `.env.local`, **restart the dev server**. In development any request with `?cf_preview=…`
-is treated as a draft preview (no secret needed), which is handy for checking edit attributes.
+is treated as a draft preview by the proxy (no secret needed), which is handy for checking edit attributes.
 
 Checks:
 
@@ -92,8 +92,9 @@ Changing a variable needs a redeploy to take effect.
 1. Set every variable above in the hosting project (Production and Preview scopes). Do **not** set the management token.
 2. Use the **Delivery** token for the live site; the Preview token and `CONTENTFUL_PREVIEW_SECRET` serve drafts to Live Preview.
 3. Create a BigCommerce Storefront token whose allowed origin is the **production domain**.
-4. In Contentful, set the content preview platforms to your domains (`PREVIEW_PRODUCTION=... PREVIEW_STAGING=... python3 scripts/seed/editor.py`, or Settings → Content preview).
-5. The CSP `frame-ancestors` rule already allows Contentful's web app (US and EU). `proxy.ts` runs on the Node.js runtime.
+4. In Contentful, set the content preview platforms to your domains (`PREVIEW_PREFIX=storefront PREVIEW_LABEL="Contentful site" PREVIEW_PRODUCTION=... PREVIEW_STAGING=... python3 tools/contentful/editor.py`, or Settings → Content preview).
+5. `proxy.ts` sets the CSP `frame-ancestors` header, which already allows only Contentful's web app (US and EU), and runs on the Node.js runtime.
+6. Commits must be authored with an email linked to the GitHub account (its `<id>+<login>@users.noreply.github.com` address works, set with `git config` in the repo): Vercel **blocks** a production deployment when it cannot find a Git account for the commit author.
 
 ### Production readiness checklist
 
@@ -129,7 +130,7 @@ Changing a variable needs a redeploy to take effect.
 - Server logs include `[bigcommerce] … failed: <message>` and `[cart] … failed` lines. These are the first place to look.
 - `curl -s -X POST https://store-<hash>-<channel>.mybigcommerce.com/graphql -H "Authorization: Bearer $TOKEN" …`
   reproduces any GraphQL call.
-- Contentful: `python3 scripts/seed/verify.py` checks the counts and both locales on the Delivery and Preview APIs;
+- Contentful: `python3 tools/contentful/verify.py` checks the counts and both locales on the Delivery and Preview APIs;
   `curl "https://cdn.contentful.com/spaces/<space>/environments/master/entries?content_type=page&fields.slug=home&access_token=<delivery token>"` returns the published home page.
 
 ## Known limitations

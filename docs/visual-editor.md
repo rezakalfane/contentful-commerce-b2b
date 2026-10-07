@@ -1,7 +1,7 @@
 # Live Preview (visual editing)
 
 Contentful's **Live Preview** opens the real site next to the entry form. With **inspector mode**, editors click an element on the
-page to jump to its field in the form. The Free plan has no separate visual editor product; this is the editing experience here.
+page to jump to its field in the form. Because pages and posts are ordered lists of blocks, editors can also **reorder blocks** in the page entry and see the result in the preview. The Free plan has no separate visual editor product; this is the editing experience here.
 
 ## How it fits together
 
@@ -13,18 +13,21 @@ Contentful web app ── "Open Live Preview" ──► storefront page  ?cf_pre
 
 1. In an entry, **Open Live Preview** loads `<preview platform URL>` for the entry's content type in a frame next to the form. The URL
    comes from the content preview settings, with the entry's slug and locale filled in.
-2. The URL carries `cf_preview=<secret>`. The server recognises it, reads **drafts** with the Preview token, and adds
+2. The URL carries `cf_preview=<secret>`. `proxy.ts` checks it and, only if it matches, tells the app the request is a preview (`x-preview`).
+   The app then reads **drafts** with the Preview token, and the mapped content carries `$`, from which components add
    `data-contentful-entry-id`, `data-contentful-field-id` and `data-contentful-locale` attributes to the elements.
-3. `components/edit-support.tsx` renders `components/live-preview.tsx`, which starts the Live Preview SDK **only in preview**.
-   The SDK outlines the tagged elements and tells the editor which field was clicked.
-4. While the editor **types**, the SDK hands over the unsaved values of the entries on the page. Changed fields (text, long text, dates,
-   numbers, booleans, lists, rich text) are sent to a server action that keeps them for a few minutes and re-renders the page in the
-   same response, so changes appear as they are made (D31).
+3. `components/edit-support.tsx` renders `providers/cms/contentful/edit-support.tsx` and `live-preview.tsx`, which start the Live Preview SDK
+   **only in preview**. The SDK outlines the tagged elements and tells the editor which field was clicked.
+4. While the editor **types**, the client finds the entries tagged on the page in the DOM, asks the server action `previewBaseline` for their
+   saved values, and subscribes with the SDK, which hands back the unsaved values. Changed fields (text, long text, dates, numbers, booleans,
+   lists, rich text) are sent to `updatePreviewOverlay`, which keeps them in memory for five minutes and calls `refresh()` so the page is
+   re-rendered in the same response, so changes appear as they are made (D31).
 5. When the editor **saves** an entry (Contentful autosaves shortly after typing stops), the SDK delivers a save event, the overlay and
-   the short draft cache are cleared and the page is re-rendered from the new draft. Links to entries and media update at this step.
+   the 5-second draft cache are cleared and the page is re-rendered from the new draft. Links to entries and media (including a reordered
+   block list) update at this step.
 
 ![Entry editor with Open Live Preview](images/cf-entry-editor.jpg)
-*The entry form: the sidebar has **Open Live Preview** under Preview.*
+*The entry form: the sidebar has **Open Live Preview** under Preview. (This screenshot shows a post from before the block model: the body is now a list of content blocks.)*
 
 ![Inspector mode on the English post](images/cf-live-preview-en.jpg)
 
@@ -35,12 +38,15 @@ English buying guide: the outlined title is focused and its field is open in the
 The home page: hero, image, intro and blocks are all tagged.
 
 ![Inspector mode on the home page](images/cf-live-preview-home.jpg)
-*Live Preview: dashed outlines mark the editable elements; clicking one focuses its field in the form (here the body).*
+*Live Preview: dashed outlines mark the editable elements; clicking one focuses its field in the form. (This screenshot predates the block model: the intro was a field of the page and is now a text block.)*
 
 ## How draft mode is switched on
 
-`previewParams()` in `lib/contentful.ts` returns a draft flag only when the request carries `cf_preview` **and** its value equals
-`CONTENTFUL_PREVIEW_SECRET` (compared in constant time). In development any value is accepted, so `?cf_preview=1` is enough locally.
+`proxy.ts` runs `previewGate()` (`providers/cms/gates.ts`) on every request: it returns true only when the request carries `cf_preview` **and**
+its value equals `CONTENTFUL_PREVIEW_SECRET` (compared in constant time). Only then does the proxy forward the header `x-preview: 1`; any
+`x-preview` a client sends is deleted first, so it cannot be spoofed. The app reads it with `isPreviewRequest()` (`lib/request.ts`). In
+development any `cf_preview` value is accepted, so `?cf_preview=1` is enough locally. The server actions of Live Preview run the same gate
+with the secret the page was opened with.
 
 Without that check, anyone could add `?cf_preview=1` to a URL and read unpublished content. On the live site a bare `?cf_preview=1`, a
 wrong secret and a missing secret all return the published page with no editing markup. The secret lives only in `.env.local`, the
@@ -48,12 +54,14 @@ deployment variables and Contentful's preview settings (which only space editors
 
 ## Edit attributes
 
-Contentful selects **fields**. `editTags()` returns a Proxy, so `entry.$.title`, `entry.$.hero_image`, `entry.$.steps__parent`… each yield
-the three attributes for that entry and field. Shape names are mapped to field ids: `snake_case` becomes `camelCase`
-(`hero_image` → `heroImage`) with a few overrides (`banner_image` → `image`, `call_to_action` → `ctaLabel`, `rich_text` → `intro`). Linked
-pieces (a guide step, a hero) are tagged with **their own entry id**, so a click opens that entry. In published HTML the tags are empty.
+Contentful selects **fields**. The mapper gives each draft entity a `$` object (`providers/cms/contentful/mapper.ts`, `editTags()` in `client.ts`): a
+Proxy, so `$.title`, `$.image`, `$.html`… each yield the three attributes for that entry and field. Components spread them with
+`tag(entity, field)` (`core/edit.ts`), for example `<h2 {...tag(block, "title")}>`. Model field names are mapped to Contentful field ids per
+content type (`html` is `copy` on a `featureBlock` and `text` on a `textBlock`; `image` is `heroImage` on a `buyingGuide`, `featuredImage` on
+a `blogPost`). Linked pieces (a guide step, a hero, a block) are tagged with **their own entry id**, so a click opens that entry. In published
+HTML the tags are empty.
 
-## The Live Preview SDK (`components/live-preview.tsx`)
+## The Live Preview SDK (`providers/cms/contentful/live-preview.tsx`)
 
 - `ContentfulLivePreview.init({ locale, space, environment, enableInspectorMode: true, enableLiveUpdates: true, targetOrigin })`, with the locale
   from the route (`en` / `fr`).
@@ -65,22 +73,24 @@ pieces (a guide step, a hero) are tagged with **their own entry id**, so a click
 
 ## Content preview setup
 
-`python3 scripts/seed/editor.py` creates one **preview platform** per origin (Settings → Content preview): `Local (npm run dev:https)`
-always, and Production and Staging when `PREVIEW_PRODUCTION` / `PREVIEW_STAGING` are set to their origins. Each has a URL per content type,
+`python3 tools/contentful/editor.py` creates one **preview platform** per origin (Settings → Content preview): local always, and production and
+staging when `PREVIEW_PRODUCTION` / `PREVIEW_STAGING` are set to their origins. For this site run it with `PREVIEW_PREFIX=storefront` and
+`PREVIEW_LABEL="Contentful site"`: the platforms are `storefront-local|production|staging`, named *Contentful site: local (npm run dev:https)*,
+*Contentful site: production* and *Contentful site: staging* (the private switchable repo uses the prefix `ccb`, so both share the space). Each has a URL per content type,
 using the editor's tokens `{locale}` and `{entry_field.slug}`, and ends in `?cf_preview=<secret>` (read from `.env.local`, never printed):
 
 | Content type | URL path |
 |---|---|
 | `page` | `/{locale}/{entry_field.slug}` (`/en/home`, `/fr/faq`…) |
 | `blogPost` | `/{locale}/blog/{entry_field.slug}` |
-| `blogListingPage`, `author` | `/{locale}/blog` |
+| `author` | `/{locale}/blog` |
 | `buyingGuide` | `/{locale}/guides/{entry_field.slug}` |
 | `faq` | `/{locale}/faq` |
-| `productSpotlight`, `announcementBar`, `siteNavigation`, `heroBanner`, `featureBlock` | `/{locale}/home` (the page that shows them) |
+| `productSpotlight`, `announcementBar`, `siteNavigation`, `heroBanner`, `featureBlock`, `textBlock`, `imageBlock`, `videoBlock`, `collectionBlock` | `/{locale}/home` (the page that shows them) |
 
-`proxy.ts` only needs two mappings for this: `/home` and `/fr/home` are served by the home pages. `/en/...` redirects (308, keeping the query)
-to the clean URL. The CSP `frame-ancestors` header allows only `https://app.contentful.com` and `https://app.eu.contentful.com` (and
-`localhost` in development).
+`proxy.ts` only needs one mapping for this: `/home` and `/fr/home` are served by the home pages. `/en/...` redirects (308, keeping the query)
+to the clean URL. The proxy sets the CSP `frame-ancestors` header per request: only `https://app.contentful.com` and
+`https://app.eu.contentful.com` (and `localhost` in development).
 
 ## Languages
 
@@ -106,7 +116,7 @@ With a Premium plan the editor's locale menu would pass `fr` and the template wo
 
 1. In Contentful open **Content**, pick an entry (a blog post, a guide, the `home` page…).
 2. Click **Open Live Preview** in the sidebar.
-3. Click an outlined element to edit its field; type: text, dates, numbers, lists and rich text show up as you type, links and media after the autosave. **Publish** makes the change live.
+3. To reorder the page, open the `page` entry and drag the entries in **Components**; click an outlined element to edit its field; type: text, dates, numbers, lists and rich text show up as you type, links and media after the autosave. **Publish** makes the change live.
 
 Typed updates cover every field type except links to entries and media (D31): those follow each save.
 
@@ -122,3 +132,10 @@ Typed updates cover every field type except links to entries and media (D31): th
 | Whole page replaced by an error screen | the SDK threw (unsupported parent origin) | `init` must stay inside `try/catch`; check `targetOrigin` |
 | Local editing fails | the editor requires HTTPS | `npm run dev:https` and accept the certificate once |
 | A template token is not replaced | token name unsupported | check the editor's preview URL for the entry and adjust `PATHS` in `editor.py` |
+
+## Screenshots to refresh
+
+These images in `docs/images/` predate the block model (they show the 15 earlier content types or fields that no longer exist) and are kept with a note
+until they are retaken: `cf-content-model.jpg` (content types list), `cf-content-list.jpg` (content list with `Blog listing page`),
+`cf-entry-editor.jpg` (a post with a `Body` field), `cf-live-preview-home.jpg` (home page when the intro was a field) and
+`cf-live-preview-en.jpg` (a post whose body was one rich-text field).

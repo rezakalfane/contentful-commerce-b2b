@@ -75,3 +75,29 @@ Prompts are quoted or condensed from the conversation. Dates are 2026.
 **Prompt (with a screenshot):** looks a bit slow on Staging, also changes are stacked and appear slowly one by one, even if I did change something in between. Can we apply this to other field types (textareas, dates, etc.)?
 
 **Result:** The screenshot showed the real editor working with the overlay but lagging (an extra full stop in the preview that was already deleted in the form). Cause: each change cost two sequential round trips (a server action, then a separate `router.refresh()`), Next runs server actions one at a time, and every render called the Preview API again, so edits queued. Fixed: the action now calls Next 16's `refresh()` so the page re-renders in the same response; one request in flight with newer edits replacing older ones per entry and a 120 ms debounce; draft responses cached for five seconds per instance (emptied on save). Field types: text, long text and dates were already covered (they are strings); added numbers, booleans, lists of strings and rich text documents. Links to entries and media are not covered (their targets would need fetching). Measured with a simulated editor locally: about 0.2 s per change for each type and 0.2 s after the last of 12 rapid edits.
+
+### Block-composed pages for every CMS: the model decision
+**Prompt:** Evaluate a single project where the CMS can be switched at runtime (`content-commerce-b2b`); then: re-ordering components works great for Pages and Blog in Amplience, can we have the same for the others, so Option 2?
+
+**Result:** Decided on **Option 2**: pages and posts are ordered lists of blocks in every CMS, with Amplience's block model as the reference, instead of mapping Amplience's blocks into fixed page layouts. For Contentful that meant new block content types (`textBlock`, `imageBlock`, `videoBlock` and one generic `collectionBlock` whose `kind` picks categories, spotlights, guides, posts, postListing, guideListing or faqs; a type per section would have needed 27 content types against the Free plan's 25), `page.components` and `blogPost.content`, and `variant` / `secondImage` on the hero.
+
+### Adding the block model additively
+**Prompt:** Yes, start P3b; we will have to update the contentful-commerce-b2b project as well.
+
+**Result:** The types and fields were added to the shared space without removing anything, so this site kept working on the old fields. The block entries were seeded in English and French (home 8 components, FAQ 2, guides 2, a new blog page 3, a text block per post) and compared with the Amplience provider of `content-commerce-b2b`: the visible text is identical on all 9 page and language combinations and the pixel difference is 0.0% on 8 of them (the blog index differed by 3.8% because four lazy-loaded thumbnails had not loaded at screenshot time). Two data differences surfaced and were fixed in the seed: post descriptions are shortened at a word boundary, and announcements keep the content's order.
+
+### Porting the block code into this repository
+**Prompt:** Port the block code into it (chosen over reading the new model into the fixed layout, or retiring the repository).
+
+**Result:** This repository now holds a single-CMS build of `content-commerce-b2b`: `core/content.ts` (the model), `lib/content.ts` (facade), `providers/cms/contentful/` (client, mapper, provider, server actions, Live Preview), the block views in `components/page-blocks.tsx`, a page catch-all `app/[locale]/[...slug]`, and `proxy.ts` (locale routing, `/home` rewrite, a verified `x-preview` header from the `cf_preview` secret, per-request `frame-ancestors`). The switcher, the Amplience provider, time travel and the image loader were left out; the translated catalog root is rewritten onto `/products` by the proxy. Deployed to production and staging, which passed the 26 URL checks; the pages are text-identical to the new project. The seeding scripts moved from `scripts/seed` to `tools/contentful`, and the Live Preview platforms were updated for the new block types (`storefront-*`, named *Contentful site: ...*).
+
+### Dropping the old fields
+**Prompt:** Let's update contentful-commerce-b2b and drop old fields.
+
+**Result:** Once the live site no longer read them: a backup of the space (19 content types, 174 entries, 62 assets, in `.backups/`, gitignored), the seed was changed to create the block model directly and rerun for posts and pages, then `schemas.py --prune` removed `page.hero`, `page.image`, `page.intro`, `page.blocks`, `blogPost.body` and `heroBanner.fullWidth` (fields are omitted first, then removed) and deleted the `blogListingPage` type with its entry. The space has 18 content types; `verify.py` reports 0 failures (37 text blocks, 7 collection blocks, 4 pages) and the `body` fallback in the mapper was removed. Documentation was rewritten for the block model; `cf-content-model`, `cf-content-list`, `cf-entry-editor`, `cf-live-preview-home` and `cf-live-preview-en` predate it and are listed under "Screenshots to refresh" in `docs/visual-editor.md`.
+
+### A production deployment was blocked
+**Prompt:** Be sure to use my rezakalfane account for GitHub (while deploying `content-commerce-b2b`).
+
+**Result:** `gh` was already on `rezakalfane` and the repository belongs to it, but Vercel **blocked** the production deployment: "couldn't find a Git account for the commit author", because the commits carried a work email that is not linked to the GitHub account (the new repository is private). Setting the repository's `user.email` to the account's GitHub no-reply address (`<id>+rezakalfane@users.noreply.github.com`, repo-local `git config`) and pushing a new commit fixed it; this repository's commits use the same address.
+
