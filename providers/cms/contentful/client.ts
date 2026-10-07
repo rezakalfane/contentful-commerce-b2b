@@ -21,16 +21,32 @@ export type Fields = Record<string, any>;
 export type Entry = { id: string; type: string; locale: string; fields: Fields };
 
 // ---------------------------------------------------------------- unsaved edits (live typing)
+/** A link to an entry or asset, as stored in the entry's fields. */
+export type LinkValue = { sys: { type: "Link"; linkType: "Entry" | "Asset"; id: string } };
+export const isLinkValue = (v: unknown): v is LinkValue => {
+  const s = (v as LinkValue | null)?.sys;
+  return !!s && typeof v === "object" && s.type === "Link" && (s.linkType === "Entry" || s.linkType === "Asset") && typeof s.id === "string";
+};
+
 /**
- * A value the preview overlay can carry: text and dates (strings), numbers, booleans, lists of those, and rich text documents.
- * Links to entries and assets are not (their targets would have to be fetched).
+ * A value the preview overlay can carry: text and dates (strings), numbers, booleans, lists of those, rich text documents, and links
+ * to entries/assets. Links only show when their target is already part of the page (a reordered or removed block); a block added in
+ * the editor appears once the entry is saved, because its content has not been fetched.
  */
-export type OverlayValue = string | number | boolean | (string | number)[] | { nodeType: "document"; [k: string]: unknown };
+export type OverlayValue =
+  | string
+  | number
+  | boolean
+  | (string | number)[]
+  | LinkValue
+  | LinkValue[]
+  | { nodeType: "document"; [k: string]: unknown };
 export const isOverlayValue = (v: unknown): v is OverlayValue =>
   typeof v === "string" ||
   typeof v === "number" ||
   typeof v === "boolean" ||
-  (Array.isArray(v) && v.every((x) => typeof x === "string" || typeof x === "number")) ||
+  isLinkValue(v) ||
+  (Array.isArray(v) && (v.every((x) => typeof x === "string" || typeof x === "number") || v.every(isLinkValue))) ||
   (!!v && typeof v === "object" && (v as { nodeType?: unknown }).nodeType === "document");
 
 /** A draft entry as the Live Preview SDK needs it: the saved overlay-able field values for one locale. */
@@ -81,13 +97,15 @@ function resolve(res: Response, locale: string, isDraft: boolean): Entry[] {
       }
       return v;
     };
-    const fields: Fields = {};
-    for (const [k, v] of Object.entries(r.fields ?? {})) fields[k] = walk(v);
+    // Unsaved values typed in the editor replace the saved draft value (before links are resolved, so a reordered list of links
+    // resolves to the same entries in the new order).
+    const source: Fields = { ...(r.fields ?? {}) };
     if (isDraft && type !== "Asset") {
-      // Unsaved values typed in the editor replace the saved draft value.
       const edits = overlayFor(r.sys.id, locale);
-      if (edits) for (const [k, v] of Object.entries(edits)) if (isOverlayValue(fields[k])) fields[k] = v;
+      if (edits) for (const [k, v] of Object.entries(edits)) if (source[k] === undefined || isOverlayValue(source[k])) source[k] = v;
     }
+    const fields: Fields = {};
+    for (const [k, v] of Object.entries(source)) fields[k] = walk(v);
     return { id: r.sys.id, type, locale, fields };
   };
   return res.items.map((r) => build(r, 3));

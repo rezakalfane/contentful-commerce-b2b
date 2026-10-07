@@ -1,3 +1,4 @@
+import { tag } from "@/core/edit";
 import { GuideView } from "@/components/guide-view";
 import { PageBlocks } from "@/components/page-blocks";
 import { PostView } from "@/components/post-view";
@@ -7,7 +8,12 @@ import type { Locale } from "@/lib/i18n";
 /** The content of a route: the Page for a key, an article, a guide. */
 export async function PageContent({ pageKey, locale, path, q }: { pageKey: string; locale: Locale; path?: string; q?: string }) {
   const page = await getPage(pageKey, locale);
-  return page ? <PageBlocks blocks={page.blocks} locale={locale} path={path} q={q} /> : null;
+  return page ? (
+    // `contents`: the wrapper only carries the edit attributes of the component list (reordering), it adds no box to the layout
+    <div {...tag(page, "components")} className="contents">
+      <PageBlocks blocks={page.blocks} locale={locale} path={path} q={q} />
+    </div>
+  ) : null;
 }
 
 export async function PostContent({ slug, locale }: { slug: string; locale: Locale }) {

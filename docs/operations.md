@@ -140,5 +140,5 @@ Changing a variable needs a redeploy to take effect.
 - Published content is cached for 60 seconds (no webhook revalidation yet).
 - There is no approval gate between editing and publishing (the ContentStack version had a workflow and publishing rule; Contentful
   workflows are not configured here).
-- Live Preview shows typed values as they are typed (server overlay, D31; links and media after each save); on the Free plan the editor cannot switch the preview locale, so French is reached with the site's own language switcher ([decisions.md](decisions.md) D30, D31).
+- Live Preview shows typed values as they are typed (server overlay, D31; a block added or media replaced after each save); on the Free plan the editor cannot switch the preview locale, so French is reached with the site's own language switcher ([decisions.md](decisions.md) D30, D31).
 - Search on the blog is a simple in-memory text match over the 100 most recent posts.

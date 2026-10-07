@@ -28,9 +28,15 @@ verified with the preview secret ([visual-editor.md](visual-editor.md#how-draft-
 
 ## Content model
 
-![The content types (this screenshot predates the block model: it shows the 15 earlier types)](images/cf-content-model.jpg)
+![The 18 content types](images/cf-content-model.jpg)
 
-*This screenshot predates the block model (it lists the 15 earlier types, including `Blog listing page`); the model now has 18.*
+The `Page` type is a title, a slug, a description, an ordered list of **components** and the SEO fields:
+
+![Fields of the Page content type](images/cf-page-fields.jpg)
+
+How the types link to each other (pages and posts point at block types; collection blocks point at guides, spotlights, posts and FAQs):
+
+![The Visual Modeler graph of the content model](images/cf-visual-modeler.jpg)
 
 A content type's fields, with the localization marker on the translatable ones:
 
@@ -112,7 +118,6 @@ Each routable entry has a **unique `slug`** field (not localized: slugs are shar
 
 ![The content list with entry types and statuses](images/cf-content-list.jpg)
 
-*This screenshot predates the block model (it lists the earlier types and the `Blog listing page`).*
 
 The 62 images live in the media library:
 

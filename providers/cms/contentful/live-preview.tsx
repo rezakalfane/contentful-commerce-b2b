@@ -20,6 +20,18 @@ function entitiesIn(node: unknown, out: Entity[] = []): Entity[] {
   return out;
 }
 
+/** Links as plain `{ sys: { type: "Link", linkType, id } }` (the editor may send resolved entries or links), so lists compare by what they point at. */
+function normalize(value: unknown): unknown {
+  const link = (x: unknown) => {
+    const sys = (x as { sys?: { type?: string; linkType?: string; id?: unknown } } | null)?.sys;
+    if (!sys || typeof sys.id !== "string") return undefined;
+    const linkType = sys.type === "Link" ? sys.linkType : sys.type;
+    return linkType === "Entry" || linkType === "Asset" ? { sys: { type: "Link", linkType, id: sys.id } } : undefined;
+  };
+  if (Array.isArray(value) && value.length && value.every((x) => link(x))) return value.map(link);
+  return link(value) ?? value;
+}
+
 /** A field value as the editor sends it: plain for one locale, or keyed by locale code when it carries every locale. */
 function localized(value: unknown, locale: string): unknown {
   return value && typeof value === "object" && !Array.isArray(value) && locale in (value as object) ? (value as Record<string, unknown>)[locale] : value;
@@ -32,7 +44,8 @@ function localized(value: unknown, locale: string): unknown {
  * - Typing: the entries tagged on the page are looked up on the server (`previewBaseline`: their saved draft values) and handed to the
  *   SDK, which sends them to the editor and gets their unsaved values back. Changed fields go to the server (`updatePreviewOverlay`),
  *   which stores them and re-renders the page in the same response, so changes show up as they are made: text and dates, numbers,
- *   booleans, lists and rich text. Links to entries and media are not overlaid; they appear after the entry is saved.
+ *   booleans, lists, rich text, and the order of linked blocks. A block added or media replaced in the editor appears after the
+ *   entry is saved.
  * - Saving: the overlays and the short draft cache are dropped and the page is re-rendered from the Preview API.
  *   `enableLiveUpdates` must be on for the SDK to deliver both the edit and the save events.
  */
@@ -103,8 +116,8 @@ export function LivePreview({ space, environment }: { space: string; environment
                   if (!base) continue;
                   const changed: Record<string, OverlayValue> = {};
                   for (const [k, raw] of Object.entries(u.fields)) {
-                    const v = localized(raw, locale);
-                    if (k in base.fields && isOverlayValue(v) && JSON.stringify(v) !== JSON.stringify(base.fields[k])) changed[k] = v;
+                    const v = normalize(localized(raw, locale));
+                    if (k in base.fields && isOverlayValue(v) && JSON.stringify(v) !== JSON.stringify(normalize(base.fields[k]))) changed[k] = v;
                   }
                   edits.push({ id: base.id, locale: base.locale, fields: changed });
                 }

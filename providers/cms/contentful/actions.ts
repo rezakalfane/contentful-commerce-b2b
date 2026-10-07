@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import type { Locale } from "@/lib/i18n";
 import { previewGate } from "@/providers/cms/gates";
-import { clearDraftCache, getBaseline, isOverlayValue, setOverlay, type OverlayValue, type PreviewEntity } from "./client";
+import { clearDraftCache, getBaseline, isLinkValue, isOverlayValue, setOverlay, type OverlayValue, type PreviewEntity } from "./client";
 
 export type PreviewEdit = { id: string; locale: string; fields: Record<string, OverlayValue> };
 
@@ -35,7 +35,10 @@ export async function updatePreviewOverlay(secret: string, edits: PreviewEdit[],
     if (!ID.test(e.id) || !LOCALE.test(e.locale)) continue;
     const fields: Record<string, OverlayValue> = {};
     for (const [k, v] of Object.entries(e.fields ?? {})) {
-      if (FIELD.test(k) && isOverlayValue(v) && JSON.stringify(v).length <= 200_000) fields[k] = v;
+      if (!FIELD.test(k) || !isOverlayValue(v) || JSON.stringify(v).length > 200_000) continue;
+      const links = Array.isArray(v) ? v.filter(isLinkValue) : isLinkValue(v) ? [v] : [];
+      if (links.some((l) => !ID.test(l.sys.id))) continue;
+      fields[k] = v;
     }
     setOverlay(e.id, e.locale, fields);
   }

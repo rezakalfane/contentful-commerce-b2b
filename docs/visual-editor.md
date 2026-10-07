@@ -23,8 +23,8 @@ Contentful web app ── "Open Live Preview" ──► storefront page  ?cf_pre
    lists, rich text) are sent to `updatePreviewOverlay`, which keeps them in memory for five minutes and calls `refresh()` so the page is
    re-rendered in the same response, so changes appear as they are made (D31).
 5. When the editor **saves** an entry (Contentful autosaves shortly after typing stops), the SDK delivers a save event, the overlay and
-   the 5-second draft cache are cleared and the page is re-rendered from the new draft. Links to entries and media (including a reordered
-   block list) update at this step.
+   the 5-second draft cache are cleared and the page is re-rendered from the new draft. A block added in the editor and replaced media
+   update at this step; reordering or removing blocks already shows while you drag.
 
 ![Entry editor with Open Live Preview](images/cf-entry-editor.jpg)
 *The entry form: the sidebar has **Open Live Preview** under Preview. (This screenshot shows a post from before the block model: the body is now a list of content blocks.)*
@@ -38,7 +38,11 @@ English buying guide: the outlined title is focused and its field is open in the
 The home page: hero, image, intro and blocks are all tagged.
 
 ![Inspector mode on the home page](images/cf-live-preview-home.jpg)
-*Live Preview: dashed outlines mark the editable elements; clicking one focuses its field in the form. (This screenshot predates the block model: the intro was a field of the page and is now a text block.)*
+*Live Preview of the home page after reordering its components and publishing: the text block `Home intro` now sits above the hero. Reordering or removing blocks also shows while you drag (D31).*
+
+A page is an ordered list of components; drag them to reorder:
+
+![The components of the home page in the entry editor](images/cf-page-components.jpg)
 
 ## How draft mode is switched on
 
@@ -116,9 +120,9 @@ With a Premium plan the editor's locale menu would pass `fr` and the template wo
 
 1. In Contentful open **Content**, pick an entry (a blog post, a guide, the `home` page…).
 2. Click **Open Live Preview** in the sidebar.
-3. To reorder the page, open the `page` entry and drag the entries in **Components**; click an outlined element to edit its field; type: text, dates, numbers, lists and rich text show up as you type, links and media after the autosave. **Publish** makes the change live.
+3. To reorder the page, open the `page` entry and drag the entries in **Components**; click an outlined element to edit its field; type: text, dates, numbers, lists, rich text and the order of the blocks show up as you type, an added block or replaced media after the autosave. **Publish** makes the change live.
 
-Typed updates cover every field type except links to entries and media (D31): those follow each save.
+Typed updates cover every field type, including the order of linked blocks, except a block added in the editor and replaced media (D31): those follow each save.
 
 ## Troubleshooting
 
@@ -135,7 +139,5 @@ Typed updates cover every field type except links to entries and media (D31): th
 
 ## Screenshots to refresh
 
-These images in `docs/images/` predate the block model (they show the 15 earlier content types or fields that no longer exist) and are kept with a note
-until they are retaken: `cf-content-model.jpg` (content types list), `cf-content-list.jpg` (content list with `Blog listing page`),
-`cf-entry-editor.jpg` (a post with a `Body` field), `cf-live-preview-home.jpg` (home page when the intro was a field) and
-`cf-live-preview-en.jpg` (a post whose body was one rich-text field).
+These images in `docs/images/` predate the block model (a post with a `Body` field) and are kept until they are retaken:
+`cf-entry-editor.jpg` and `cf-live-preview-en.jpg`.

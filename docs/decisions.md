@@ -190,14 +190,18 @@ which limit). It worked after the user deleted an unused `staging` space.
 **Why.** The French page then renders with French draft content, and the edit tags carry `data-contentful-locale`, so clicking an element focuses the French field.
 **Consequence.** The "editor opens the French page" goal is met by one extra click on the Free plan, and fully with a Premium plan.
 
-### D31. Unsaved edits through a server overlay; links and media after save
+### D31. Unsaved edits through a server overlay; added blocks and replaced media after save
 **Decision.** `enableLiveUpdates` is `true` (the SDK delivers the edit and save events only then). While the editor types, the SDK
 answers the page's subscription with the entries' unsaved values. `providers/cms/contentful/live-preview.tsx` finds the entries tagged on the page, gets their saved values from the server action
 `previewBaseline`, compares the editor's answers with them and sends the changed fields to `updatePreviewOverlay`
 (`providers/cms/contentful/actions.ts`). The action stores them in server memory for five minutes (`setOverlay` in `client.ts`) and calls `refresh()` (Next 16), which re-renders the open page
-**in the same response**. Covered: text and long text, dates, numbers, booleans, lists of strings and rich text documents. Not covered:
-links to entries and media (their targets would have to be fetched); they appear after the entry is saved, which also clears the
-overlay and the draft cache.
+**in the same response**. Covered: text and long text, dates, numbers, booleans, lists of strings, rich text documents and links to
+entries or media that the page already has. That includes **reordering or removing blocks** in a `page.components` list (or a post's
+`content`): the overlay holds the new list of links and the server re-resolves it from the entries it already fetched. Not covered: a
+block **added** in the editor, or media replaced by another one (their content has not been fetched); they appear after the entry is
+saved, which also clears the overlay and the draft cache. Reordering showed only after a save at first (found in the real editor); the
+page component list therefore carries the page's edit attributes (a `contents` wrapper in `components/page-content.tsx`) so the
+page entry is subscribed.
 **Why.** Contentful's live updates patch **client-side data** (`useContentfulLiveUpdates`), and these pages are server-rendered with
 the mapped model. An overlay keeps the page components unchanged.
 **Speed.** First version: a server action then a separate `router.refresh()` (two round trips per change, and Next runs server actions
