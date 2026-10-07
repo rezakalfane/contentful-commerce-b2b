@@ -28,6 +28,12 @@ carries the preview secret ([visual-editor.md](visual-editor.md#how-draft-mode-i
 
 ## Content model
 
+![The 15 content types](images/cf-content-model.jpg)
+
+A content type's fields, with the localization marker on the translatable ones:
+
+![Fields of the Buying guide content type](images/cf-content-type-buying-guide.jpg)
+
 Fifteen content types: nine root types and six reusable pieces. All are defined in `scripts/seed/schemas.py` (the plan allows 25).
 Contentful has no inline blocks, so the pieces are **separate entries linked from their page**.
 
@@ -79,6 +85,12 @@ Each routable entry has a **unique `slug`** field (not localized: slugs are shar
 - **Rich text** is Contentful's JSON document (headings 2 and 3, lists, hyperlinks, bold and italic), rendered to HTML.
 
 ## Content volume (sample)
+
+![The content list with entry types and statuses](images/cf-content-list.jpg)
+
+The 62 images live in the media library:
+
+![The media library](images/cf-media.jpg)
 
 | Type | Entries |
 |---|---|

@@ -51,7 +51,7 @@ This is the same storefront as the other CMS versions (ContentStack, Amplience a
 </tr>
 <tr>
 <td><img src="docs/images/cf-live-preview-en.jpg" alt="Contentful Live Preview with inspector mode"><br><sub>Live Preview: click an outlined element, edit its field in the form</sub></td>
-<td><img src="docs/images/cf-live-preview-fr.jpg" alt="The French post in Live Preview"><br><sub>French in Live Preview, reached with the site's language switcher</sub></td>
+<td><img src="docs/images/cf-live-preview-fr.jpg" alt="A French buying guide in Live Preview"><br><sub>French in Live Preview, reached with the site's language switcher</sub></td>
 </tr>
 </table>
 

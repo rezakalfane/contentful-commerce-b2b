@@ -24,6 +24,14 @@ Contentful web app ── "Open Live Preview" ──► storefront page  ?cf_pre
 *The entry form: the sidebar has **Open Live Preview** under Preview.*
 
 ![Inspector mode on the English post](images/cf-live-preview-en.jpg)
+
+English buying guide: the outlined title is focused and its field is open in the left pane.
+
+![Inspector mode on an English buying guide](images/cf-live-preview-guide-en.jpg)
+
+The home page: hero, image, intro and blocks are all tagged.
+
+![Inspector mode on the home page](images/cf-live-preview-home.jpg)
 *Live Preview: dashed outlines mark the editable elements; clicking one focuses its field in the form (here the body).*
 
 ## How draft mode is switched on
@@ -82,7 +90,11 @@ On the Free plan the editor always fills `{locale}` with `en`, so a French entry
 2. The French page renders with French draft content, and its edit tags carry `data-contentful-locale="fr"`, so clicking an element focuses the
    **French** field in the form.
 
-![French post in Live Preview](images/cf-live-preview-fr.jpg)
+![French buying guide in Live Preview, reached with the storefront's EN / FR switcher](images/cf-live-preview-fr.jpg)
+
+The preview platform is chosen per entry (here *Staging*; *Production* and *Local* are the other two):
+
+![Entry editor showing the preview platform](images/cf-entry-editor-guide.jpg)
 *The French post, reached with the site's language switcher inside Live Preview: French content, and the outlines target the French fields.*
 
 With a Premium plan the editor's locale menu would pass `fr` and the template would open `/fr/...` directly.
@@ -107,9 +119,3 @@ Per-keystroke updates are **not** implemented (D31): the pages are server-render
 | Whole page replaced by an error screen | the SDK threw (unsupported parent origin) | `init` must stay inside `try/catch`; check `targetOrigin` |
 | Local editing fails | the editor requires HTTPS | `npm run dev:https` and accept the certificate once |
 | A template token is not replaced | token name unsupported | check the editor's preview URL for the entry and adjust `PATHS` in `editor.py` |
-
-## Screenshots still to add
-
-- `cf-content-model.jpg`: the content model list (Content model page).
-- `cf-content-list.jpg`: the content list with entries and statuses.
-- `cf-media.jpg`: the media library with the 62 assets.
