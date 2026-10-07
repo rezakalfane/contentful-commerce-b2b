@@ -1,6 +1,6 @@
 # Commerce B2B storefront
 
-**Live:** _not deployed yet_ (planned: Vercel project `contentful-commerce-b2b`; English at `/`, French at `/fr`)
+**Live:** https://contentful-commerce-b2b.vercel.app (English at `/`, French at `/fr`) · **Staging:** https://contentful-commerce-b2b-git-staging-rza-kalfanes-projects.vercel.app
 
 A headless B2B storefront for trade batteries. **Content** (pages, articles, guides, FAQs, navigation, banners) lives in
 **Contentful**; the **catalog, prices and cart** live in **BigCommerce**; **Next.js 16** (App Router) composes them.

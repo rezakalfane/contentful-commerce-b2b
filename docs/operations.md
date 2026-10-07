@@ -65,10 +65,10 @@ empty product sections and `[bigcommerce] … failed` messages in the server log
 
 | Item | Value |
 |---|---|
-| Production URL | _to be filled in when the Vercel project exists_ (planned project `contentful-commerce-b2b`) |
+| Production URL | https://contentful-commerce-b2b.vercel.app |
 | Staging URL | _to be filled in_ (the Preview environment of the `staging` branch; public) |
-| Vercel project | `contentful-commerce-b2b` (scope "Rza Kalfane's projects"), planned |
-| Source | GitHub `rezakalfane/contentful-commerce-b2b`, planned |
+| Vercel project | `contentful-commerce-b2b` (scope "Rza Kalfane's projects"); Production = `main`, Preview = `staging`, previews public |
+| Source | GitHub `rezakalfane/contentful-commerce-b2b` (public; `main` + `staging`, synced by `.github/workflows/sync-staging.yml`) |
 | Deploys | every push to `main` deploys **Production**; a GitHub Action rebuilds the `staging` branch from `main` (with an empty commit, so Vercel builds it), which deploys the **Preview**; other branches and pull requests also get previews |
 | Variables | the storefront variables above in Production, Preview and Development (tokens marked *sensitive*); **no personal access token** |
 | Protection | Vercel Authentication is off, so previews and the Live Preview frame can load without a Vercel login |

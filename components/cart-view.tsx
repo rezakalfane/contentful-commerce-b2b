@@ -42,18 +42,25 @@ export function CartView({ locale, lines: initial, subtotal, checkoutUrl, produc
   const router = useRouter();
   const [lines, setLines] = useState(initial);
   const [saving, setSaving] = useState(false);
+  // False from the first change until fresh server data has arrived: the props hold the previous subtotal until then, so showing
+  // them as soon as the save ends would flash the old total before the new one.
+  const [synced, setSynced] = useState(true);
   const [failed, setFailed] = useState(false);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const inFlight = useRef(0);
 
   // Show the server's truth whenever nothing is waiting to be saved.
   useEffect(() => {
-    if (timers.current.size === 0 && inFlight.current === 0) setLines(initial);
-  }, [initial]);
+    if (timers.current.size === 0 && inFlight.current === 0) {
+      setLines(initial);
+      setSynced(true);
+    }
+  }, [initial, subtotal]);
 
   const change = (line: CartLineView, quantity: number) => {
     setFailed(false);
     setSaving(true);
+    setSynced(false);
     setLines((ls) => (quantity <= 0 ? ls.filter((l) => l.id !== line.id) : ls.map((l) => (l.id === line.id ? { ...l, quantity } : l))));
 
     clearTimeout(timers.current.get(line.id));
@@ -78,7 +85,7 @@ export function CartView({ locale, lines: initial, subtotal, checkoutUrl, produc
 
   const currency = lines[0]?.unit?.currencyCode ?? subtotal?.currencyCode ?? "GBP";
   const computed: Money = { value: lines.reduce((sum, l) => sum + (l.unit?.value ?? 0) * l.quantity, 0), currencyCode: currency };
-  const shownSubtotal = !saving && subtotal ? subtotal : computed;
+  const shownSubtotal = synced && !saving && subtotal ? subtotal : computed;
 
   if (lines.length === 0) {
     return (

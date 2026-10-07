@@ -55,3 +55,13 @@ Prompts are quoted or condensed from the conversation. Dates are 2026.
 **Prompt:** Step 5. (Contentful documentation pages and editor screenshots supplied.)
 
 **Result:** README and the docs set rewritten for Contentful (`contentful.md`, `visual-editor.md`, architecture, i18n, implementation, operations, seeding, decisions); Storyblok screenshots removed; four editor screenshots added with the browser tabs and address bar cropped out (they showed the space id and unrelated tabs); this history restarted for the Contentful build. The `contentful` skill and the `cms-storefront-port` notes were updated with everything that differed from the starter.
+
+### 6. GitHub and Vercel
+**Prompt:** Let's go! (after being asked to confirm the public repo and the Vercel project.)
+
+**Result:** Scanned the tree for every `.env.local` value (0 hits), created the public repo `rezakalfane/contentful-commerce-b2b` with `main` and `staging` (the sync workflow keeps `staging` equal to `main`), linked the Vercel project, set the variables per scope from `.env.local` without printing them (tokens and the preview secret as sensitive; the management token is not on Vercel), made previews public and connected Git. Production https://contentful-commerce-b2b.vercel.app and staging https://contentful-commerce-b2b-git-staging-rza-kalfanes-projects.vercel.app both build and pass `urltest.py` 26/26; on production a bare or wrong `cf_preview` shows no edit tags and the right secret does. The Production and Staging content preview platforms were then added in Contentful with `editor.py`. `vercel link` appended `VERCEL_OIDC_TOKEN` to `.env.local` (gitignored).
+
+### Cart subtotal updated several times
+**Prompt:** When adding to cart, the subtotal is updated multiple times. If you can fix it, port it to ContentStack, Amplience and Storyblok.
+
+**Result:** Reproduced in a headless browser by recording the subtotal text: one click on "+" gave £396.80, then the old £198.40, then £396.80 again. While saving, the cart showed the optimistic total; when the save ended it fell back to the server subtotal from the props, which is still the previous one until the refresh lands. `cart-view.tsx` now keeps the optimistic total until fresh server data has arrived (a `synced` flag reset on every change, set again when the props update with nothing pending). After the fix one click shows one update and three quick clicks climb steadily (£396.80, £595.20, £793.60). The identical file was copied into the Storyblok, ContentStack and Amplience storefronts (they were byte-identical to the old version; `tsc` and `eslint` pass); left uncommitted there for review.
