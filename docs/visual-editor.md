@@ -17,11 +17,11 @@ Contentful web app ── "Open Live Preview" ──► storefront page  ?cf_pre
    `data-contentful-entry-id`, `data-contentful-field-id` and `data-contentful-locale` attributes to the elements.
 3. `components/edit-support.tsx` renders `components/live-preview.tsx`, which starts the Live Preview SDK **only in preview**.
    The SDK outlines the tagged elements and tells the editor which field was clicked.
-4. While the editor **types**, the SDK hands over the unsaved values of the entries on the page. Changed plain-text fields (titles,
-   summaries, labels…) are sent to a server action that keeps them for a few minutes, and the page re-renders with them (`router.refresh()`),
-   so text appears as it is typed (D31).
-5. When the editor **saves** an entry (Contentful autosaves shortly after typing stops), the SDK delivers a save event, the overlay is
-   cleared and the page calls `router.refresh()`; the server re-renders from the new draft. Rich text, links and media update at this step.
+4. While the editor **types**, the SDK hands over the unsaved values of the entries on the page. Changed fields (text, long text, dates,
+   numbers, booleans, lists, rich text) are sent to a server action that keeps them for a few minutes and re-renders the page in the
+   same response, so changes appear as they are made (D31).
+5. When the editor **saves** an entry (Contentful autosaves shortly after typing stops), the SDK delivers a save event, the overlay and
+   the short draft cache are cleared and the page is re-rendered from the new draft. Links to entries and media update at this step.
 
 ![Entry editor with Open Live Preview](images/cf-entry-editor.jpg)
 *The entry form: the sidebar has **Open Live Preview** under Preview.*
@@ -106,9 +106,9 @@ With a Premium plan the editor's locale menu would pass `fr` and the template wo
 
 1. In Contentful open **Content**, pick an entry (a blog post, a guide, the `home` page…).
 2. Click **Open Live Preview** in the sidebar.
-3. Click an outlined element to edit its field; type: plain text shows up as you type, rich text and references after the autosave. **Publish** makes the change live.
+3. Click an outlined element to edit its field; type: text, dates, numbers, lists and rich text show up as you type, links and media after the autosave. **Publish** makes the change live.
 
-Typed updates cover plain-text fields only (D31): the pages are server-rendered, so rich text, links and media follow each save.
+Typed updates cover every field type except links to entries and media (D31): those follow each save.
 
 ## Troubleshooting
 

@@ -1,10 +1,10 @@
 "use client";
 
 import { ContentfulLivePreview } from "@contentful/live-preview";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { updatePreviewOverlay, type PreviewEdit } from "@/app/actions/preview";
-import type { PreviewEntity } from "@/lib/contentful";
+import { isOverlayValue, type OverlayValue, type PreviewEntity } from "@/lib/contentful";
 
 type Entity = { sys: { type: "Entry"; id: string }; fields: Record<string, unknown> };
 
@@ -28,15 +28,14 @@ function localized(value: unknown, locale: string): unknown {
  * Starts the Live Preview SDK inside Contentful's content preview.
  *
  * - Inspector mode: click a tagged element to open its field in the editor.
- * - Typing: the SDK sends the entries of the page to the editor, which answers with their unsaved values. Changed plain-text fields
- *   are sent to the server (`updatePreviewOverlay`) and the page is re-rendered with them, so text shows up as it is typed. Rich
- *   text, links and media are not overlaid; they appear after the entry is saved.
- * - Saving: the page is re-rendered (`router.refresh()`) from the Preview API, and the overlay of the saved entry is dropped.
+ * - Typing: the SDK sends the entries of the page to the editor, which answers with their unsaved values. Changed fields
+ *   are sent to the server (`updatePreviewOverlay`), which stores them and re-renders the page in the same response, so changes show up as they are made:
+ *   text and dates, numbers, booleans, lists and rich text. Links to entries and media are not overlaid; they appear after the entry is saved.
+ * - Saving: the overlays and the short draft cache are dropped and the page is re-rendered from the Preview API.
  *   `enableLiveUpdates` must be on for the SDK to deliver both the edit and the save events.
  */
 export function LivePreview({ space, environment, entities }: { space: string; environment: string; entities: PreviewEntity[] }) {
   const { locale } = useParams<{ locale: string }>();
-  const router = useRouter();
   // The saved values at the time the page opened: the editor's answers are compared with them, so reverting a change clears it.
   const [baseline] = useState(() => new Map(entities.map((e) => [e.id, e])));
 
@@ -46,22 +45,30 @@ export function LivePreview({ space, environment, entities }: { space: string; e
     if (process.env.NODE_ENV !== "production" && document.referrer) targetOrigin.push(new URL(document.referrer).origin);
 
     const secret = new URLSearchParams(window.location.search).get("cf_preview") ?? "";
-    const data: Entity[] = [...baseline.values()].map((e) => ({ sys: { type: "Entry", id: e.id }, fields: { ...e.fields } }));
+    // Only the entries that are tagged on the page (the others are fetched for lookups and are not editable here).
+    const tagged = new Set([...document.querySelectorAll("[data-contentful-entry-id]")].map((el) => el.getAttribute("data-contentful-entry-id")));
+    const data: Entity[] = [...baseline.values()].filter((e) => tagged.has(e.id)).map((e) => ({ sys: { type: "Entry", id: e.id }, fields: { ...e.fields } }));
+    // One request in flight at a time (Next runs server actions one after another anyway); while it runs, newer edits replace older
+    // ones per entry, so the page catches up to the latest state in one step instead of replaying every keystroke.
     let busy = false;
-    let queued: PreviewEdit[] | null = null;
-    const send = async (edits: PreviewEdit[]) => {
-      if (busy) return void (queued = edits); // one request at a time, keep only the latest state
+    const pending = new Map<string, PreviewEdit>();
+    const flush = async () => {
+      if (busy || !pending.size) return;
       busy = true;
+      const edits = [...pending.values()];
+      pending.clear();
       try {
-        if (await updatePreviewOverlay(secret, edits)) router.refresh();
+        await updatePreviewOverlay(secret, edits); // stores the edits and re-renders the page in the same response
       } finally {
         busy = false;
-        if (queued) {
-          const next = queued;
-          queued = null;
-          void send(next);
-        }
+        void flush();
       }
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const send = (edits: PreviewEdit[]) => {
+      for (const e of edits) pending.set(e.id, e);
+      clearTimeout(timer);
+      timer = setTimeout(() => void flush(), 120); // typing bursts become one request
     };
 
     try {
@@ -75,10 +82,10 @@ export function LivePreview({ space, environment, entities }: { space: string; e
               for (const u of entitiesIn(updated)) {
                 const base = baseline.get(u.sys.id);
                 if (!base) continue;
-                const changed: Record<string, string> = {};
+                const changed: Record<string, OverlayValue> = {};
                 for (const [k, raw] of Object.entries(u.fields)) {
                   const v = localized(raw, locale);
-                  if (typeof v === "string" && k in base.fields && v !== base.fields[k]) changed[k] = v;
+                  if (k in base.fields && isOverlayValue(v) && JSON.stringify(v) !== JSON.stringify(base.fields[k])) changed[k] = v;
                 }
                 edits.push({ id: base.id, locale: base.locale, fields: changed });
               }
@@ -88,12 +95,14 @@ export function LivePreview({ space, environment, entities }: { space: string; e
         : () => {};
       const unsubSave = ContentfulLivePreview.subscribe("save", {
         callback: () => {
-          // Saved: the Preview API now has the values, so drop the overlays (an empty edit clears) and re-render.
+          // Saved: the Preview API now has the values, so drop the overlays (an empty edit clears) and the draft cache, and re-render.
+          pending.clear();
           const clear: PreviewEdit[] = [...baseline.values()].map((e) => ({ id: e.id, locale: e.locale, fields: {} }));
-          void updatePreviewOverlay(secret, clear).finally(() => router.refresh());
+          void updatePreviewOverlay(secret, clear, true);
         },
       });
       return () => {
+        clearTimeout(timer);
         unsubEdit();
         unsubSave();
       };
@@ -101,7 +110,7 @@ export function LivePreview({ space, environment, entities }: { space: string; e
       // Opened outside a supported parent (e.g. the preview URL in a bare tab): the page still renders, without click-to-edit.
       console.warn("Live Preview not started:", e instanceof Error ? e.message : e);
     }
-  }, [locale, space, environment, router, baseline]);
+  }, [locale, space, environment, baseline]);
 
   return null;
 }

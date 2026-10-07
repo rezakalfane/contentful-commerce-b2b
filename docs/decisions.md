@@ -185,22 +185,27 @@ which limit). It worked after the user deleted an unused `staging` space.
 **Why.** The French page then renders with French draft content, and the edit tags carry `data-contentful-locale`, so clicking an element focuses the French field.
 **Consequence.** The "editor opens the French page" goal is met by one extra click on the Free plan, and fully with a Premium plan.
 
-### D31. Typed plain text through a server overlay; everything else after save
+### D31. Unsaved edits through a server overlay; links and media after save
 **Decision.** `enableLiveUpdates` is `true` (the SDK delivers the edit and save events only then). While the editor types, the SDK
 answers the page's subscription with the entries' unsaved values. `components/live-preview.tsx` compares them with the values the page
-opened with and sends the changed **plain-text** fields (Symbol and Text) to the server action `updatePreviewOverlay`
-(`app/actions/preview.ts`), which keeps them in server memory for five minutes (`setOverlay` in `lib/contentful.ts`); the page then
-re-renders with them (`router.refresh()`). Rich text, links and media are not overlaid: they appear after the entry is saved, which
-also clears the overlay.
+opened with and sends the changed fields to the server action `updatePreviewOverlay` (`app/actions/preview.ts`). The action stores them
+in server memory for five minutes (`setOverlay` in `lib/contentful.ts`) and calls `refresh()` (Next 16), which re-renders the open page
+**in the same response**. Covered: text and long text, dates, numbers, booleans, lists of strings and rich text documents. Not covered:
+links to entries and media (their targets would have to be fetched); they appear after the entry is saved, which also clears the
+overlay and the draft cache.
 **Why.** Contentful's live updates patch **client-side data** (`useContentfulLiveUpdates`), and these pages are server-rendered with
 mapped shapes. An overlay keeps the page components unchanged.
-**Guards.** The action requires the same `cf_preview` secret as the page, accepts only plain strings (id, locale and field names are
-pattern-checked, 20 000 characters per value, 100 entries per call) and the overlay is only read for draft requests, so the published
-site never shows it.
-**Trade-offs.** The overlay lives in the memory of one server instance: on Vercel a refresh that lands on another instance misses the
-latest keystroke, and the next autosave catches up. Measured with a simulated editor: about 0.5 s from the editor's message to the
-new text (a draft page render is about 0.5 s on production, mostly the Preview API call). Not verified in the real editor: the exact
-shape of its answers (the code accepts a whole data tree or a single entry, with plain or locale-keyed fields).
+**Speed.** First version: a server action then a separate `router.refresh()` (two round trips per change, and Next runs server actions
+one at a time), which made changes queue up on Staging. Now: one round trip (`refresh()` inside the action); one request in flight,
+newer edits replace older ones per entry and a 120 ms debounce turns typing bursts into one request; and draft responses are cached
+for five seconds per instance so a re-render does not call the Preview API again (emptied on save). Measured with a simulated editor
+on a local server: about 0.2 s per change for every supported type, and 12 rapid edits settle 0.2 s after the last one.
+**Guards.** The action requires the same `cf_preview` secret as the page, accepts only the listed value types (id, locale and field
+names are pattern-checked, 200 KB per value, 100 entries per call), a malformed rich text document renders as empty, and the overlay
+is only read for draft requests, so the published site never shows it.
+**Trade-offs.** The overlay and the draft cache live in the memory of one server instance: on Vercel a render that lands on another
+instance misses the latest edit, and the next autosave catches up. The draft cache means a change made outside this editor session shows
+up within five seconds.
 
 ### D32. The Live Preview SDK is guarded
 **Decision.** `ContentfulLivePreview.init` runs in `try/catch`, with `targetOrigin` set to the Contentful web app hosts (plus the framing page's origin in development).

@@ -39,25 +39,37 @@ export function previewParams(sp: Record<string, string | string[] | undefined>)
 }
 
 // ---------------------------------------------------------------- unsaved edits (live typing)
-/** A draft entry as the Live Preview SDK needs it: plain-text field values only (strings), for one locale. */
-export type PreviewEntity = { id: string; type: string; locale: string; fields: Record<string, string> };
+/**
+ * A value the preview overlay can carry: text and dates (strings), numbers, booleans, lists of those, and rich text documents.
+ * Links to entries and assets are not (their targets would have to be fetched).
+ */
+export type OverlayValue = string | number | boolean | (string | number)[] | { nodeType: "document"; [k: string]: unknown };
+export const isOverlayValue = (v: unknown): v is OverlayValue =>
+  typeof v === "string" ||
+  typeof v === "number" ||
+  typeof v === "boolean" ||
+  (Array.isArray(v) && v.every((x) => typeof x === "string" || typeof x === "number")) ||
+  (!!v && typeof v === "object" && (v as { nodeType?: unknown }).nodeType === "document");
+
+/** A draft entry as the Live Preview SDK needs it: the overlay-able field values for one locale. */
+export type PreviewEntity = { id: string; type: string; locale: string; fields: Record<string, OverlayValue> };
 
 const OVERLAY_TTL_MS = 5 * 60_000;
 const OVERLAY_MAX = 200;
-type Overlay = { fields: Record<string, string>; at: number };
-/** Unsaved plain-text edits sent by the editor, by `entryId:locale`. Kept in server memory for a few minutes; only read for drafts. */
+type Overlay = { fields: Record<string, OverlayValue>; at: number };
+/** Unsaved edits sent by the editor, by `entryId:locale`. Kept in server memory for a few minutes; only read for drafts. */
 const overlays = (globalThis as { __cfOverlays?: Map<string, Overlay> }).__cfOverlays ?? new Map<string, Overlay>();
 (globalThis as { __cfOverlays?: Map<string, Overlay> }).__cfOverlays = overlays;
 
 /** Replaces the unsaved edits of an entry (an empty `fields` clears them). */
-export function setOverlay(id: string, locale: string, fields: Record<string, string>) {
+export function setOverlay(id: string, locale: string, fields: Record<string, OverlayValue>) {
   const key = `${id}:${locale}`;
   if (!Object.keys(fields).length) return void overlays.delete(key);
   if (overlays.size >= OVERLAY_MAX) overlays.delete(overlays.keys().next().value as string);
   overlays.set(key, { fields, at: Date.now() });
 }
 
-function overlayFor(id: string, locale: string): Record<string, string> | undefined {
+function overlayFor(id: string, locale: string): Record<string, OverlayValue> | undefined {
   const o = overlays.get(`${id}:${locale}`);
   if (!o) return undefined;
   if (Date.now() - o.at > OVERLAY_TTL_MS) return void overlays.delete(`${id}:${locale}`);
@@ -94,10 +106,10 @@ function resolve(res: Response, locale: string, isDraft: boolean): Entry[] {
     const fields: Fields = {};
     for (const [k, v] of Object.entries(r.fields ?? {})) fields[k] = walk(v);
     if (isDraft && type !== "Asset") {
-      const saved: Record<string, string> = {};
-      for (const [k, v] of Object.entries(fields)) if (typeof v === "string") saved[k] = v;
+      const saved: Record<string, OverlayValue> = {};
+      for (const [k, v] of Object.entries(fields)) if (isOverlayValue(v)) saved[k] = v;
       registry().set(`${r.sys.id}:${locale}`, { id: r.sys.id, type, locale, fields: saved });
-      // Unsaved text typed in the editor replaces the saved draft value (the registry keeps the saved one as the baseline).
+      // Unsaved values typed in the editor replace the saved draft value (the registry keeps the saved one as the baseline).
       const edits = overlayFor(r.sys.id, locale);
       if (edits) for (const [k, v] of Object.entries(edits)) if (k in saved) fields[k] = v;
     }
@@ -116,14 +128,28 @@ async function request(path: string, query: Params, isDraft: boolean): Promise<R
   return res.json();
 }
 
+// Draft responses are kept for a few seconds per server instance, so the quick succession of re-renders while an editor types
+// does not hit the Preview API each time. A save (or any overlay clear) empties it, so saved changes show up immediately.
+const DRAFT_TTL_MS = 5_000;
+const draftCache = (globalThis as { __cfDraftCache?: Map<string, { at: number; res: Promise<Response> }> }).__cfDraftCache ?? new Map();
+(globalThis as { __cfDraftCache?: typeof draftCache }).__cfDraftCache = draftCache;
+export const clearDraftCache = () => draftCache.clear();
+
+function draftResponse(key: string, load: () => Promise<Response>): Promise<Response> {
+  const hit = draftCache.get(key);
+  if (hit && Date.now() - hit.at < DRAFT_TTL_MS) return hit.res;
+  const res = load();
+  draftCache.set(key, { at: Date.now(), res });
+  res.catch(() => draftCache.delete(key));
+  return res;
+}
+
 // `cache()` shares one fetch between generateMetadata, the page and the layout within a single request.
-const fetchEntries = cache(async (contentType: string, params: string, locale: string, isDraft: boolean) =>
-  resolve(
-    await request("/entries", { content_type: contentType, locale, include: 3, limit: 1000, ...(JSON.parse(params) as Params) }, isDraft),
-    locale,
-    isDraft,
-  ),
-);
+const fetchEntries = cache(async (contentType: string, params: string, locale: string, isDraft: boolean) => {
+  const query = { content_type: contentType, locale, include: 3, limit: 1000, ...(JSON.parse(params) as Params) };
+  const load = () => request("/entries", query, isDraft);
+  return resolve(await (isDraft ? draftResponse(JSON.stringify(query), load) : load()), locale, isDraft);
+});
 
 /** Entries of a content type for the locale (fields fall back to English where French is empty), up to 1000. */
 export function getEntries(contentType: string, locale: Locale, preview?: PreviewParams, params: Params = {}) {
@@ -156,7 +182,13 @@ export const strings = (v: unknown): string[] => (Array.isArray(v) ? v.map(Strin
 export const numbers = (v: unknown): number[] => strings(v).map(Number).filter((n) => Number.isFinite(n) && n > 0);
 
 /** Rich text (Contentful document) to HTML. */
-export const html = (doc?: Parameters<typeof documentToHtmlString>[0]): string => (doc?.content?.length ? documentToHtmlString(doc) : "");
+export const html = (doc?: Parameters<typeof documentToHtmlString>[0]): string => {
+  try {
+    return doc?.content?.length ? documentToHtmlString(doc) : "";
+  } catch {
+    return ""; // a malformed document (only possible from a preview overlay) renders as empty rather than failing the page
+  }
+};
 
 /** Names the storefront shapes use that differ from the Contentful field id (everything else is the camelCase of the shape name). */
 const FIELD_ID: Record<string, string> = {
