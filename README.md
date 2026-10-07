@@ -31,7 +31,7 @@ This is the same storefront as the other CMS versions (ContentStack, Amplience a
 | **Cart** | Add to cart, dynamic quantity stepper with instant totals, remove, hosted checkout hand-off |
 | **Content** | Blog (36 articles, 6 authors), 6 buying guides, 15 FAQs, banners, announcement bar, navigation |
 | **Languages** | English and French: routes, UI text, prices, dates and all Contentful content (field-level localization) |
-| **Editing** | Contentful Live Preview: click an element to jump to its field, the page refreshes on save; French through the site's language switcher |
+| **Editing** | Contentful Live Preview: click an element to jump to its field, typed changes appear as you type (links and media after save); French through the site's language switcher |
 | **Design** | "Workbench": light theme, 1100px pages, photography-led |
 
 ## Screenshots

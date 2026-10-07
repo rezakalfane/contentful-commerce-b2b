@@ -80,8 +80,8 @@ redirect through `/api/switch-locale`; filter values are translated, so attribut
 ## Editing
 
 ### D12. Server-rendered preview with refresh on save, not client-side rendering
-**Decision.** Keep the Server Components. The Live Preview SDK tags the page and, when an entry is saved, the page calls `router.refresh()` so the
-server renders from the new draft.
+**Decision.** Keep the Server Components. The Live Preview SDK tags the page; edits and saves re-render it on the server from the draft, with the
+unsaved values overlaid while typing (D31).
 **Why.** One rendering path for the site and the editor, with no client-side data fetching.
 **Trade-off.** Plain text updates as it is typed; everything else follows the save (see D31).
 **Rejected.** Rendering the page client-side from raw Contentful data with `useContentfulLiveUpdates`: it would replace the page components and
@@ -128,8 +128,11 @@ chip resets the controls.
 via the cookie (guest carts).
 
 ### D20. Optimistic quantity editing
-**Decision.** Update totals immediately, save after 500 ms, reconcile with `router.refresh()`.
-**Why.** Quantity buttons feel instant; a failed save shows an error and the next refresh restores the server's numbers.
+**Decision.** Update totals immediately, save after 500 ms, reconcile with `router.refresh()`. The optimistic subtotal stays on screen
+until fresh server data has arrived (a `synced` flag in `CartView`).
+**Why.** Quantity buttons feel instant; a failed save shows an error and the next refresh restores the server's numbers. Falling back
+to the props as soon as the save ended showed the previous subtotal for a moment (new, old, new), so the flag keeps the optimistic
+total until the refreshed props arrive.
 
 ## Design
 
