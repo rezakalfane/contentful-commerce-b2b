@@ -1,0 +1,30 @@
+name: Sync staging with main
+
+# The `staging` branch is the code behind the staging site (Vercel's Preview environment: same Contentful space, preview token).
+# It must always run the same code as `main`. Each sync adds its own empty commit: Vercel skips a branch whose
+# tip is a commit it has already built, so without a distinct commit the staging site would never update.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-staging
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Rebuild staging from main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B staging origin/main
+          git commit --allow-empty -m "Staging: sync with main ${GITHUB_SHA::7}"
+          git push --force origin staging

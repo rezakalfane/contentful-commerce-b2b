@@ -1,0 +1,90 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Architecture</title>
+<style>
+  :root{--ink:#0f1b26;--slate:#52606d;--line:#d9dfe5;--bench:#f2f4f6;--amber:#f7b500}
+  *{box-sizing:border-box;margin:0}
+  body{width:1400px;height:740px;background:#fff;font-family:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;color:var(--ink);position:relative}
+  .box{position:absolute;border:1.5px solid var(--line);border-radius:6px;background:#fff;padding:16px 18px}
+  .box h3{font-size:19px;font-weight:700;margin-bottom:8px}
+  .box p,.box li{font-size:14.5px;line-height:1.5;color:var(--slate)}
+  .box ul{padding-left:18px;margin-top:2px}
+  .tag{display:inline-block;font-size:12.5px;font-weight:600;background:var(--bench);border-radius:3px;padding:2px 8px;margin:6px 6px 0 0;color:var(--ink)}
+  .app{border-color:var(--ink);border-width:2px}
+  .app h3{display:flex;align-items:center;gap:10px}
+  .bar{position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--amber);border-radius:6px 0 0 6px}
+  svg{position:absolute;left:0;top:0}
+  .lbl{font-size:13px;fill:#52606d;font-weight:500}
+  .title{position:absolute;left:40px;top:26px;font-size:15px;color:var(--slate)}
+  .title b{color:var(--ink);font-size:22px;display:block;margin-bottom:2px}
+</style></head><body>
+<div class="title"><b>Commerce B2B architecture</b>Content from Contentful, commerce from BigCommerce, composed by Next.js on Vercel</div>
+
+<svg width="1400" height="740" viewBox="0 0 1400 740">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#0f1b26"/></marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#52606d"/></marker>
+  </defs>
+  <!-- editors -> contentful -->
+  <path d="M300 330 H400" stroke="#0f1b26" stroke-width="2" marker-end="url(#a)" fill="none"/>
+  <text class="lbl" x="306" y="298">edit, localize,</text><text class="lbl" x="306" y="314">publish</text>
+  <!-- contentful -> storefront -->
+  <path d="M700 300 H790" stroke="#0f1b26" stroke-width="2" marker-end="url(#a)" fill="none"/>
+  <text class="lbl" x="706" y="288">Delivery API</text>
+  <path d="M790 350 H700" stroke="#52606d" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#g)" fill="none"/>
+  <text class="lbl" x="722" y="372">drafts</text>
+  <!-- storefront <-> bigcommerce -->
+  <path d="M1090 330 H1150" stroke="#0f1b26" stroke-width="2" marker-start="url(#a)" marker-end="url(#a)" fill="none"/>
+  <!-- editors -> storefront (iframe) -->
+  <path d="M170 262 V150 H940 V222" stroke="#52606d" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#g)" fill="none"/>
+  <text class="lbl" x="420" y="140">frame: Live Preview (SDK + edit attributes)</text>
+  <!-- github -> vercel/storefront -->
+  <path d="M1190 90 H1020 V222" stroke="#0f1b26" stroke-width="2" marker-end="url(#a)" fill="none"/>
+  <text class="lbl" x="1030" y="80">git push: build and deploy</text>
+  <!-- storefront -> visitors -->
+  <path d="M940 482 V560" stroke="#0f1b26" stroke-width="2" marker-end="url(#a)" fill="none"/>
+  <text class="lbl" x="952" y="528">HTML</text>
+  <!-- seed -> contentful -->
+  <path d="M550 600 V482" stroke="#52606d" stroke-width="2" marker-end="url(#g)" fill="none"/>
+  <text class="lbl" x="562" y="548">Management API</text>
+  <!-- seed reads bigcommerce photos -->
+</svg>
+
+<div class="box" style="left:40px;top:262px;width:260px;height:150px">
+  <h3>Editors</h3><p>Contentful web app:</p>
+  <ul><li>entry forms</li><li>Live Preview</li><li>inspector mode</li></ul>
+</div>
+
+<div class="box" style="left:400px;top:222px;width:300px;height:260px">
+  <h3>Contentful (US)</h3>
+  <p>Content, two languages</p>
+  <span class="tag">15 content types</span><span class="tag">en</span><span class="tag">fr</span><span class="tag">draft / published</span>
+  <ul style="margin-top:12px"><li>pages (hero + feature blocks), blog, authors</li><li>FAQ, buying guides, spotlights</li><li>navigation, announcement bar</li></ul>
+</div>
+
+<div class="box app" style="left:790px;top:222px;width:300px;height:260px">
+  <span class="bar"></span>
+  <h3>Next.js 16 storefront</h3>
+  <p>Server Components, hosted on Vercel</p>
+  <span class="tag">proxy.ts</span><span class="tag">/ (en)</span><span class="tag">/fr</span>
+  <ul style="margin-top:12px"><li>home, blog, guides, FAQ</li><li>mega menu, listing, product page</li><li>cart (server actions)</li></ul>
+</div>
+
+<div class="box" style="left:1150px;top:222px;width:210px;height:260px">
+  <h3>BigCommerce</h3><p>Commerce</p>
+  <ul style="margin-top:8px"><li>catalog, prices, stock</li><li>categories, facets</li><li>carts, checkout</li></ul>
+  <span class="tag">Storefront GraphQL</span>
+</div>
+
+<div class="box" style="left:1190px;top:50px;width:170px;height:80px;padding:12px 16px">
+  <h3 style="font-size:17px;margin-bottom:2px">GitHub</h3><p style="font-size:13.5px">main branch</p>
+</div>
+
+<div class="box" style="left:790px;top:560px;width:300px;height:110px">
+  <h3>Visitors</h3><p>English at <b>/</b>, French at <b>/fr</b></p>
+  <span class="tag">light theme</span><span class="tag">1100px</span>
+</div>
+
+<div class="box" style="left:400px;top:600px;width:300px;height:120px">
+  <h3>Seed scripts (Python)</h3><p>schemas, English, French, photos; idempotent</p>
+</div>
+</body></html>
