@@ -90,8 +90,7 @@ function post(e: Entry, draft: boolean): Post {
     readTime: typeof f.readTime === "number" ? f.readTime : undefined,
     image: img(f.featuredImage, f.title),
     authors: writer ? [author(writer, draft)] : [],
-    // Posts written before blocks existed only have a rich text body.
-    blocks: blocks.length ? blocks : f.body ? [{ type: "text", html: html(f.body) }] : [],
+    blocks,
     ...tags(e, draft),
   };
 }

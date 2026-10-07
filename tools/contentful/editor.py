@@ -13,10 +13,14 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 import cf  # noqa: E402
 
+# Platform ids are prefixed (PREVIEW_PREFIX, default "ccb") so several sites can share the space: the older contentful-commerce-b2b site
+# keeps its own `storefront-*` platforms.
+PREFIX = os.environ.get("PREVIEW_PREFIX", "ccb")
+LABEL = os.environ.get("PREVIEW_LABEL", "Switchable")
 ORIGINS = {
-    "storefront-local": ("Local (npm run dev:https)", "https://localhost:3000"),
-    **({"storefront-production": ("Production", os.environ["PREVIEW_PRODUCTION"])} if os.environ.get("PREVIEW_PRODUCTION") else {}),
-    **({"storefront-staging": ("Staging", os.environ["PREVIEW_STAGING"])} if os.environ.get("PREVIEW_STAGING") else {}),
+    f"{PREFIX}-local": (f"{LABEL}: local (npm run dev:https)", "https://localhost:3000"),
+    **({f"{PREFIX}-production": (f"{LABEL}: production", os.environ["PREVIEW_PRODUCTION"])} if os.environ.get("PREVIEW_PRODUCTION") else {}),
+    **({f"{PREFIX}-staging": (f"{LABEL}: staging", os.environ["PREVIEW_STAGING"])} if os.environ.get("PREVIEW_STAGING") else {}),
 }
 
 # content type -> path template (tokens are filled in by the editor)
@@ -32,6 +36,11 @@ PATHS = {
     "siteNavigation": "/{locale}/home",
     "heroBanner": "/{locale}/home",
     "featureBlock": "/{locale}/home",
+    # Blocks are shared by pages; the home page is where most of them live.
+    "textBlock": "/{locale}/home",
+    "imageBlock": "/{locale}/home",
+    "videoBlock": "/{locale}/home",
+    "collectionBlock": "/{locale}/home",
 }
 
 

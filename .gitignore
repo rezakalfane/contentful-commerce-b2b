@@ -47,3 +47,5 @@ next-env.d.ts
 __pycache__/
 
 certificates
+# backups taken before destructive changes
+.backups/

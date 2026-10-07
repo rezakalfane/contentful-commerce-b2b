@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Create/update the Contentful locales and content types (the content model). Idempotent.
-Usage: python3 scripts/seed/schemas.py
+Usage: python3 tools/contentful/schemas.py
 
 Conventions: field-level localization (human-readable fields are `localized`), enums are Symbol fields with a validation list that
 store English values, lists of strings are Array of Symbol, references to other entries are Link fields, and the reusable pieces
@@ -64,6 +64,10 @@ def refs(id_, name, to):
     return _f(id_, name, "Array", False, False, items={"type": "Link", "linkType": "Entry", "validations": [{"linkContentType": [to]}]})
 
 
+def refs_any(id_, name, to):
+    return _f(id_, name, "Array", False, False, items={"type": "Link", "linkType": "Entry", "validations": [{"linkContentType": list(to)}]})
+
+
 def symbols(id_, name, t=False):
     return _f(id_, name, "Array", t, False, items={"type": "Symbol", "validations": []})
 
@@ -77,35 +81,47 @@ TOPICS = ["Ordering", "Pricing & Credit", "Delivery & Returns", "Account & Users
 AUDIENCES = ["Workshops", "Fleet managers", "Leisure & marine", "Everyone"]
 BADGES = ["None", "Best seller", "Trade favourite", "New in", "Heavy duty"]
 
+# The components an editor can stack in a page, and the ones allowed in a post body.
+BLOCK_TYPES = ["heroBanner", "featureBlock", "textBlock", "imageBlock", "videoBlock", "collectionBlock"]
+POST_BLOCK_TYPES = ["textBlock", "imageBlock", "videoBlock"]
+COLLECTION_KINDS = ["categories", "spotlights", "guides", "posts", "postListing", "guideListing", "faqs"]
+
 # id: (name, display field, fields)
 TYPES = {
     # reusable pieces
     "heroBanner": ("Hero banner", "title", [
         symbol("title", "Title", required=True), text("description", "Description"), image("image", "Image"),
-        symbol("ctaLabel", "CTA label"), symbol("ctaHref", "CTA path", t=False), boolean("fullWidth", "Full width")]),
+        symbol("ctaLabel", "CTA label"), symbol("ctaHref", "CTA path", t=False),
+        image("secondImage", "Second image (home variant)"), enum("variant", "Variant", ["default", "home"])]),
     "featureBlock": ("Feature block", "title", [
         symbol("title", "Title", required=True), rich("copy", "Copy"), image("image", "Image"), enum("layout", "Layout", ["image_left", "image_right"])]),
     "guideStep": ("Guide step", "stepTitle", [
         symbol("stepTitle", "Step title", required=True), text("stepBody", "Step body", required=True), text("proTip", "Pro tip")]),
     "useCase": ("Use case", "useCase", [symbol("useCase", "Use case", required=True), text("description", "Description")]),
+    "textBlock": ("Text block", "name", [symbol("name", "Internal name", t=False, required=True), rich("text", "Text", required=True)]),
+    "imageBlock": ("Image block", "name", [
+        symbol("name", "Internal name", t=False, required=True), image("image", "Image", required=True), symbol("alt", "Alt text")]),
+    "videoBlock": ("Video block", "name", [
+        symbol("name", "Internal name", t=False, required=True), symbol("videoTitle", "Video title"), symbol("src", "Video URL", t=False, required=True)]),
+    # One type for every list-like section (a type per section would exceed the 25 content types of the Free plan).
+    "collectionBlock": ("Collection block", "name", [
+        symbol("name", "Internal name", t=False, required=True), enum("kind", "Kind", COLLECTION_KINDS), symbol("title", "Title"),
+        symbol("linkLabel", "Link label"), symbol("searchPlaceholder", "Search placeholder"), symbol("searchButtonLabel", "Search button label"),
+        refs_any("items", "Items (guides, spotlights, posts or FAQs)", ["buyingGuide", "productSpotlight", "blogPost", "faq"])]),
     "navLink": ("Navigation link", "label", [
         symbol("label", "Label", required=True), symbol("href", "Path", t=False, required=True), boolean("highlight", "Highlight")]),
     "footerColumn": ("Footer column", "heading", [symbol("heading", "Heading", required=True), refs("links", "Links", "navLink")]),
     # root types
     "page": ("Page", "title", [
-        symbol("title", "Title", required=True), slug(), text("description", "Description"), ref("hero", "Hero", "heroBanner"), image("image", "Image"),
-        rich("intro", "Intro"), refs("blocks", "Feature blocks", "featureBlock"), *seo()]),
-    "blogListingPage": ("Blog listing page", "title", [
-        symbol("title", "Title", required=True), ref("hero", "Hero", "heroBanner"),
-        symbol("searchPlaceholder", "Search placeholder"), symbol("searchButtonLabel", "Search button label"),
-        symbol("featuredTitle", "Featured title"), refs("featuredPosts", "Featured posts", "blogPost"), symbol("viewAllLabel", "View all label"),
-        symbol("relatedTitle", "Related title"), refs("relatedPosts", "Related posts", "blogPost"), *seo()]),
+        symbol("title", "Title", required=True), slug(), text("description", "Description"),
+        refs_any("components", "Components (top to bottom)", BLOCK_TYPES), *seo()]),
     "author": ("Author", "name", [
         symbol("name", "Name", t=False, required=True), slug(), image("picture", "Picture", required=True), text("bio", "Bio")]),
     "blogPost": ("Blog post", "title", [
         symbol("title", "Title", required=True), slug(), ref("author", "Author", "author"), date("date", "Date"),
-        image("featuredImage", "Featured image", required=True), rich("body", "Body"), ref("relatedPost", "Related post", "blogPost"),
-        boolean("isArchived", "Archived"), *seo(), symbol("seoKeywords", "SEO keywords")]),
+        image("featuredImage", "Featured image", required=True), ref("relatedPost", "Related post", "blogPost"),
+        boolean("isArchived", "Archived"), *seo(), symbol("seoKeywords", "SEO keywords"),
+        refs_any("content", "Content blocks", POST_BLOCK_TYPES), integer("readTime", "Read time (minutes)")]),
     "faq": ("FAQ", "question", [
         symbol("question", "Question", required=True), slug(), rich("answer", "Answer", required=True), enum("topic", "Topic", TOPICS),
         integer("sortOrder", "Sort order"), boolean("isFeatured", "Featured")]),
@@ -145,11 +161,53 @@ def locales():
         print(f"  added locale {cf.FR} (falls back to {cf.EN})")
 
 
+def _remove_entry(entry):
+    """Unpublishes (if needed) and deletes an entry."""
+    if entry["sys"].get("publishedVersion"):
+        entry = cf.api("DELETE", f"/entries/{entry['sys']['id']}/published", version=entry["sys"]["version"])
+    cf.api("DELETE", f"/entries/{entry['sys']['id']}", version=entry["sys"]["version"])
+
+
+def apply_type(id_, name, fields, display, prune):
+    """Creates/updates a content type. Fields the model no longer has are kept as they are, unless `prune`: then they are first
+    omitted (published) and then removed (Contentful deletes a field only after it was omitted); their values leave the entries."""
+    existing = cf.get_or_none(f"/content_types/{id_}")
+    extra = [f for f in (existing or {}).get("fields", []) if f["id"] not in {x["id"] for x in fields}]
+    if extra and not prune:
+        print(f"  {id_}: keeping {[f['id'] for f in extra]} (run with --prune to remove)")
+        cf.upsert_content_type(id_, name, fields + extra, display)
+    elif extra:
+        cf.upsert_content_type(id_, name, fields + [{**f, "omitted": True} for f in extra], display)
+        cf.upsert_content_type(id_, name, fields, display)
+        print(f"  {id_}: removed {[f['id'] for f in extra]}")
+    else:
+        cf.upsert_content_type(id_, name, fields, display)
+
+
+def remove_types(prune):
+    """Content types that are no longer in the model: listed, and with `prune` their entries and the type are deleted."""
+    for t in cf.api("GET", "/content_types", params={"limit": 100})["items"]:
+        if t["sys"]["id"] in TYPES:
+            continue
+        entries = cf.api("GET", "/entries", params={"content_type": t["sys"]["id"], "limit": 1000})["items"]
+        if not prune:
+            print(f"  {t['sys']['id']}: no longer in the model ({len(entries)} entries); run with --prune to delete")
+            continue
+        for e in entries:
+            _remove_entry(e)
+        if t["sys"].get("publishedVersion"):
+            t = cf.api("DELETE", f"/content_types/{t['sys']['id']}/published", version=t["sys"]["version"])
+        cf.api("DELETE", f"/content_types/{t['sys']['id']}", version=t["sys"]["version"])
+        print(f"  {t['sys']['id']}: deleted with {len(entries)} entries")
+
+
 def main():
+    prune = "--prune" in sys.argv
     locales()
     for id_, (name, display, fields) in TYPES.items():
-        cf.upsert_content_type(id_, name, fields, display)
+        apply_type(id_, name, fields, display, prune)
         print(f"  content type {id_}")
+    remove_types(prune)
 
 
 if __name__ == "__main__":

@@ -11,8 +11,8 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(__file__))
 import cf  # noqa: E402
 
-EXPECTED = {"author": 6, "faq": 15, "blogPost": 36, "blogListingPage": 1, "buyingGuide": 6, "productSpotlight": 6, "announcementBar": 2,
-            "siteNavigation": 1, "page": 3, "heroBanner": 4, "featureBlock": 3}
+EXPECTED = {"author": 6, "faq": 15, "blogPost": 36, "buyingGuide": 6, "productSpotlight": 6, "announcementBar": 2, "siteNavigation": 1,
+            "page": 4, "heroBanner": 4, "featureBlock": 3, "textBlock": 37, "collectionBlock": 7}
 HOSTS = {"cda": "cdn", "cpa": "preview"}
 TOKENS = {"cda": "CONTENTFUL_DELIVERY_TOKEN", "cpa": "CONTENTFUL_PREVIEW_TOKEN"}
 failures = 0
@@ -42,10 +42,10 @@ for api in ("cda", "cpa"):
     check(locales == ["en", "fr"] or sorted(locales) == ["en", "fr"], f"locales {locales}")
     for lang in ("en", "fr"):
         post = get(api, "/entries", content_type="blogPost", locale=lang, include=2, limit=1, order="fields.slug")["items"][0]
-        check(bool(post["fields"].get("title")) and bool(post["fields"].get("body")), f"[{lang}] post '{post['fields']['title'][:45]}'")
+        check(bool(post["fields"].get("title")) and bool(post["fields"].get("content")), f"[{lang}] post '{post['fields']['title'][:45]}'")
         home = get(api, "/entries", content_type="page", locale=lang, include=3, **{"fields.slug": "home"})
         f = home["items"][0]["fields"]
-        check("includes" in home and f.get("blocks"), f"[{lang}] home: '{f['description'][:50]}'")
+        check("includes" in home and f.get("components"), f"[{lang}] home: '{f['description'][:50]}'")
 fr = get("cda", "/entries", content_type="blogPost", locale="fr", **{"fields.slug": "migrating-to-a-composable-storefront-step-by-step"})
 en = get("cda", "/entries", content_type="blogPost", locale="en", **{"fields.slug": "migrating-to-a-composable-storefront-step-by-step"})
 check(fr["items"][0]["fields"]["title"] != en["items"][0]["fields"]["title"], "French title differs from English")
