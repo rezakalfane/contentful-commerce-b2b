@@ -44,7 +44,7 @@ A content type's fields, with the localization marker on the translatable ones:
 
 *This screenshot is of `buyingGuide`, which did not change.*
 
-Eighteen content types: eleven that editors work with directly and seven reusable pieces. All are defined in `tools/contentful/schemas.py`
+Eighteen content types: eight that editors work with directly (`page`, `author`, `blogPost`, `faq`, `buyingGuide`, `productSpotlight`, `announcementBar`, `siteNavigation`) and ten reusable pieces (the six block types, `guideStep`, `useCase`, `navLink`, `footerColumn`). All are defined in `tools/contentful/schemas.py`
 (the plan allows 25). Pages and posts are **ordered lists of blocks**: a block is an entry, and the page (or post) links to it in the order it
 should appear. Contentful has no inline blocks, so every block is a **separate entry linked from its page**.
 
