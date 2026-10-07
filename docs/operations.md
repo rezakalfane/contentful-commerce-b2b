@@ -66,7 +66,7 @@ empty product sections and `[bigcommerce] … failed` messages in the server log
 | Item | Value |
 |---|---|
 | Production URL | https://contentful-commerce-b2b.vercel.app |
-| Staging URL | _to be filled in_ (the Preview environment of the `staging` branch; public) |
+| Staging URL | https://contentful-commerce-b2b-git-staging-rza-kalfanes-projects.vercel.app (the Preview environment of the `staging` branch; public) |
 | Vercel project | `contentful-commerce-b2b` (scope "Rza Kalfane's projects"); Production = `main`, Preview = `staging`, previews public |
 | Source | GitHub `rezakalfane/contentful-commerce-b2b` (public; `main` + `staging`, synced by `.github/workflows/sync-staging.yml`) |
 | Deploys | every push to `main` deploys **Production**; a GitHub Action rebuilds the `staging` branch from `main` (with an empty commit, so Vercel builds it), which deploys the **Preview**; other branches and pull requests also get previews |
